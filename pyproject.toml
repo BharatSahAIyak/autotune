@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "autotunenlp"
+version = "0.1.0"
+description = "A comprehensive toolkit for seamless data generation and fine-tuning of NLP models, all conveniently packed into a single block."
+authors = ["Sai Gopal Reddy Kovvuri <ksgr5566@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+fastapi = "^0.100.0"
+uvicorn = "^0.23.1"
+transformers = "^4.31.0"
+pandas = "^2.0.3"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
