@@ -1,11 +1,10 @@
-from fastapi import FastAPI, Security, HTTPException
+from fastapi import FastAPI, Security, BackgroundTasks, Response
 from fastapi.security.api_key import APIKey, APIKeyHeader
-from huggingface_hub import HfApi, CommitOperationAdd
-from pydantic import BaseModel
-from typing import Optional
-import pandas as pd
+import aioredis
+import uuid
 
-from utils import *
+from models import GenerationAndCommitRequest
+from tasks import generate_and_push_data
 
 
 app = FastAPI()
@@ -14,58 +13,37 @@ app = FastAPI()
 openai_key_scheme = APIKeyHeader(name="X-OpenAI-Key")
 huggingface_key_scheme = APIKeyHeader(name="X-HuggingFace-Key")
 
+# Redis connection pool
+redis_pool = None
 
-class GenData(BaseModel):
-    prompt: str
-    num_samples: int
-    repo: str
-    split: Optional[list[int]] = [80, 10, 10]
+@app.on_event("startup")
+async def startup_event():
+    global redis_pool
+    redis_pool = aioredis.from_url("redis://localhost", decode_responses=True)
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await redis_pool.close()
 
 
-@app.post("/data")
-async def chat_completion(req: GenData,
+@app.post("/data", status_code=202)
+async def chat_completion(req: GenerationAndCommitRequest,
+                          background_tasks: BackgroundTasks,
                           openai_key: APIKey = Security(openai_key_scheme), 
                           huggingface_key: APIKey = Security(huggingface_key_scheme)
                           ):
-    
-    data = {"data": []}
-    train, test, val = {}, {}, {}
-
-    try:
-        while len(data["data"]) < req.num_samples:
-            res = get_data(req.prompt, api_key=openai_key)
-            data["data"].extend(res)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to gen data: {str(e)}")
+    task_id = str(uuid.uuid4()) 
+    await redis_pool.hset(task_id, mapping={"status": "Starting", "Progress": "None", "Details": "None"})
+    background_tasks.add_task(generate_and_push_data, redis_pool, task_id, req, openai_key, huggingface_key)
+    return {"status": "Accepted", "task_id": task_id}
 
 
-    data["data"] = data["data"][:req.num_samples]
-    train["data"], val["data"], test["data"] = split_data(data["data"], req.split)
-
-    try:
-        hf_api = HfApi(endpoint="https://huggingface.co", token=huggingface_key)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to authenicate HF key: {str(e)}")
-
-    try:
-        hf_api.create_repo(repo_id=req.repo, repo_type="dataset")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create repo: {str(e)}")
-
-    for split, d in zip(["train", "val", "test"], [train, val, test]):
-        df = pd.DataFrame(d["data"])
-        csv_data = df.to_csv()
-        file_data = csv_data.encode("utf-8")
-        operation = CommitOperationAdd(f"{split}.csv", file_data)
-        try:
-            hf_api.create_commit(
-                repo_id=req.repo,
-                operations=[operation],
-                commit_message=f"Adding {split} csv file",
-                repo_type="dataset"
-            )
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to commit to repo: {str(e)}")
-
-    return {"status": "success", "data": test["data"]}
+@app.get("/track/{task_id}")
+async def get_progress(task_id: str, response: Response):
+    res = await redis_pool.hgetall(task_id)
+    if res == {}:
+        response.status_code = 404
+    else:
+        response.status_code = 200
+    return {"task_id": task_id, "response": res}
 

@@ -17,7 +17,11 @@ poetry install
 ```
 
 ## API
-1. Specify a port number and start the application.
+1. Start your docker engine and run a redis image on port 6379.
+```
+docker run --name autotunenlp-redis -p 6379:6379 -d redis
+```
+2. Specify a port number and start the application.
 ```
 uvicorn main:app --port PORT_NUMBER --reload
 ```

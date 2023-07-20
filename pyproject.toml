@@ -12,6 +12,7 @@ fastapi = "^0.100.0"
 uvicorn = "^0.23.1"
 transformers = "^4.31.0"
 pandas = "^2.0.3"
+aioredis = {extras = ["hiredis"], version = "^2.0.1"}
 
 
 [build-system]
