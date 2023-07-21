@@ -33,7 +33,7 @@ async def chat_completion(req: GenerationAndCommitRequest,
                           huggingface_key: APIKey = Security(huggingface_key_scheme)
                           ):
     task_id = str(uuid.uuid4()) 
-    await redis_pool.hset(task_id, mapping={"status": "Starting", "Progress": "None", "Details": "None"})
+    await redis_pool.hset(task_id, mapping={"status": "Starting", "Progress": "None", "Detail": "None"})
     background_tasks.add_task(generate_and_push_data, redis_pool, task_id, req, openai_key, huggingface_key)
     return {"status": "Accepted", "task_id": task_id}
 

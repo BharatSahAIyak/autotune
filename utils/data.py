@@ -1,11 +1,11 @@
 import json
 import time
-import requests
+import aiohttp
 
 
 USER_CONTENT = "Generate 20 robust samples."
 
-def generate(user_content, system_content, api_key, model="gpt-3.5-turbo", temperature=1, max_tokens=None):
+async def generate(user_content, system_content, api_key, model="gpt-3.5-turbo", temperature=1, max_tokens=None):
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}",
@@ -24,17 +24,20 @@ def generate(user_content, system_content, api_key, model="gpt-3.5-turbo", tempe
         data["max_tokens"] = max_tokens
 
     endpoint = "https://api.openai.com/v1/chat/completions"
-    response = requests.post(endpoint, headers=headers, data=json.dumps(data))
 
-    if response.status_code == 200:
-        return response.json()["choices"][0]["message"]["content"]
-    else:
-        raise Exception(f"Error {response.status_code}: {response.text}")
+    async with aiohttp.ClientSession() as session:
+        async with session.post(endpoint, headers=headers, json=data) as response:
+            if response.status == 200:
+                return (await response.json())["choices"][0]["message"]["content"]
+            else:
+                response_text = await response.text()
+                raise Exception(f"Error {response.status}: {response_text}")
 
-def get_data(system_content, api_key):
+
+async def get_data(system_content, api_key):
     time_stamp = str(int(time.time()))
     user_content = f"Timestamp = {time_stamp}, {USER_CONTENT}"
-    res = generate(user_content, system_content, api_key)
+    res = await generate(user_content, system_content, api_key)
     try:
         res = json.loads(res)
         if validate_data(res):
