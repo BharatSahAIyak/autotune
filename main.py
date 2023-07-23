@@ -1,10 +1,12 @@
 from fastapi import FastAPI, Security, BackgroundTasks, Response
 from fastapi.security.api_key import APIKey, APIKeyHeader
+from celery.result import AsyncResult
 import aioredis
 import uuid
 
-from models import GenerationAndCommitRequest
+from models import GenerationAndCommitRequest, ModelData
 from tasks import generate_and_push_data
+from worker import celery_app
 
 
 app = FastAPI()
@@ -37,6 +39,13 @@ async def chat_completion(req: GenerationAndCommitRequest,
     background_tasks.add_task(generate_and_push_data, redis_pool, task_id, req, openai_key, huggingface_key)
     return {"status": "Accepted", "task_id": task_id}
 
+@app.post("/train", status_code=202)
+async def train_model(req: ModelData, 
+                      huggingface_key: APIKey = Security(huggingface_key_scheme)
+                      ):
+    task = celery_app.send_task('worker.train_task', args=[dict(req), huggingface_key])
+    return {'task_id': str(task.id)}
+
 
 @app.get("/track/{task_id}")
 async def get_progress(task_id: str, response: Response):
@@ -47,3 +56,7 @@ async def get_progress(task_id: str, response: Response):
         response.status_code = 200
     return {"task_id": task_id, "response": res}
 
+@app.get("/get_logs/{task_id}")
+async def get_logs(task_id: str):
+    res = AsyncResult(task_id, app=celery_app)
+    return {'status': str(res.status), 'logs': res.info}
