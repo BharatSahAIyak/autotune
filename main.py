@@ -5,8 +5,8 @@ import aioredis
 import uuid
 import json
 
-from models import GenerationAndCommitRequest, ModelData
-from tasks import generate_and_push_data
+from models import GenerationAndCommitRequest, GenerationAndUpdateRequest, ModelData
+from tasks import generate_and_push_data, generate_and_update_data
 from worker import celery_app
 
 
@@ -38,6 +38,17 @@ async def chat_completion(req: GenerationAndCommitRequest,
     task_id = str(uuid.uuid4()) 
     await redis_pool.hset(task_id, mapping={"status": "Starting", "Progress": "None", "Detail": "None"})
     background_tasks.add_task(generate_and_push_data, redis_pool, task_id, req, openai_key, huggingface_key)
+    return {"status": "Accepted", "task_id": task_id}
+
+@app.put("/data", status_code=202)
+async def chat_updation(req: GenerationAndUpdateRequest,
+                        background_tasks: BackgroundTasks,
+                        openai_key: APIKey = Security(openai_key_scheme),
+                        huggingface_key: APIKey = Security(huggingface_key_scheme)
+                        ):
+    task_id = str(uuid.uuid4())
+    await redis_pool.hset(task_id, mapping={"status": "Starting", "Progress": "None", "Detail": "None"})
+    background_tasks.add_task(generate_and_update_data, redis_pool, task_id, req, openai_key, huggingface_key)
     return {"status": "Accepted", "task_id": task_id}
 
 @app.post("/train", status_code=202)

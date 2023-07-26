@@ -65,3 +65,9 @@ def split_data(res, split):
     val = res[train_end:val_end]
     test = res[val_end:test_end]
     return train, val, test
+
+def get_cols(task):
+    if task == "seq2seq":
+        return ["Input", "Output"]
+    elif task == "text_classification":
+        return ["text", "label"]

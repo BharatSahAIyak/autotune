@@ -1,16 +1,14 @@
 from fastapi import HTTPException
-from huggingface_hub import HfApi, CommitOperationAdd
+from huggingface_hub import HfApi, CommitOperationAdd, HfFileSystem
 import pandas as pd
+from io import StringIO
 
-from utils import split_data, get_data
-from models import GenerationAndCommitRequest
+from utils import split_data, get_data, get_cols
+from models import GenerationAndCommitRequest, GenerationAndUpdateRequest
 
 
-async def generate_and_push_data(redis, task_id, req: GenerationAndCommitRequest, 
-                                 openai_key, huggingface_key
-                                 ):
+async def generate_data(redis, task_id, req: GenerationAndCommitRequest, openai_key):
     data = {"data": []}
-    train, test, val = {}, {}, {}
 
     try:
         while len(data["data"]) < req.num_samples:
@@ -22,8 +20,16 @@ async def generate_and_push_data(redis, task_id, req: GenerationAndCommitRequest
         detail = f"Failed to generate data: {str(e)}"
         await redis.hset(task_id, mapping={"status": "Error", "Progress": "None", "Detail": detail})
         raise HTTPException(status_code=500, detail=detail)
-
+    
     data["data"] = data["data"][:req.num_samples]
+    return data
+
+
+async def generate_and_push_data(redis, task_id, req: GenerationAndCommitRequest, 
+                                 openai_key, huggingface_key
+                                 ):
+    data = await generate_data(redis, task_id, req, openai_key)
+    train, test, val = {}, {}, {}
     train["data"], val["data"], test["data"] = split_data(data["data"], req.split)
 
     try:
@@ -40,7 +46,7 @@ async def generate_and_push_data(redis, task_id, req: GenerationAndCommitRequest
         await redis.hset(task_id, mapping={"status": "Error", "Progress": "None", "Detail": detail})
         raise HTTPException(status_code=500, detail=detail)
 
-    for split, d in zip(["train", "val", "test"], [train, val, test]):
+    for split, d in zip(["train", "validation", "test"], [train, val, test]):
         df = pd.DataFrame(d["data"])
         csv_data = df.to_csv()
         file_data = csv_data.encode("utf-8")
@@ -56,5 +62,36 @@ async def generate_and_push_data(redis, task_id, req: GenerationAndCommitRequest
             detail = f"Failed to commit to repo in HF: {str(e)}"
             await redis.hset(task_id, mapping={"status": "Error", "Progress": "None", "Detail": detail})
             raise HTTPException(status_code=500, detail=detail)
+
+    await redis.hset(task_id, mapping={"status": "Completed", "Progress": "None", "Detail": "None"})
+
+
+async def generate_and_update_data(redis, task_id, req: GenerationAndUpdateRequest, 
+                                   openai_key, huggingface_key
+                                   ):
+    
+    data = await generate_data(redis, task_id, req, openai_key)
+
+    try:
+        fs = HfFileSystem(token=huggingface_key)
+        path = f"datasets/{req.repo}/{req.split}.csv"
+
+        original_data = fs.read_text(path)
+        original_data = pd.read_csv(StringIO(original_data))
+
+        df = pd.DataFrame(data["data"])
+        
+        combined_df = pd.concat([df, original_data])
+        combined_df.reset_index(drop=True, inplace=True)
+
+        columns_to_keep = get_cols(req.task)
+        combined_df = combined_df[columns_to_keep]
+
+        with fs.open(path, "w") as f:
+            combined_df.to_csv(f)
+    except Exception as e:
+        detail = f"Failed to update repo in HF: {str(e)}"
+        await redis.hset(task_id, mapping={"status": "Error", "Progress": "None", "Detail": detail})
+        raise HTTPException(status_code=500, detail=detail)
 
     await redis.hset(task_id, mapping={"status": "Completed", "Progress": "None", "Detail": "None"})
