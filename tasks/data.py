@@ -14,7 +14,7 @@ async def generate_and_push_data(redis, task_id, req: GenerationAndCommitRequest
 
     try:
         while len(data["data"]) < req.num_samples:
-            res = await get_data(req.prompt, api_key=openai_key)
+            res = await get_data(req.prompt, openai_key, req.task, req.num_labels)
             data["data"].extend(res)
             progress = min(100, len(data["data"]) / req.num_samples * 100)
             await redis.hset(task_id, mapping={"status": "Processing", "Progress": f"{progress}%", "Detail": "Generating data"})

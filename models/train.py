@@ -1,9 +1,10 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Literal
 
 
 class ModelData(BaseModel):
     dataset: str
     model: str
-    epochs: Optional[int] = 1
+    epochs: Optional[float] = 1
     save_path: str
+    task: Literal['text_classification', 'seq2seq']

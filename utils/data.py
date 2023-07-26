@@ -34,22 +34,26 @@ async def generate(user_content, system_content, api_key, model="gpt-3.5-turbo",
                 raise Exception(f"Error {response.status}: {response_text}")
 
 
-async def get_data(system_content, api_key):
+async def get_data(system_content, api_key, task, num_labels=None):
     time_stamp = str(int(time.time()))
     user_content = f"Timestamp = {time_stamp}, {USER_CONTENT}"
     res = await generate(user_content, system_content, api_key)
     try:
         res = json.loads(res)
-        if validate_data(res):
+        if validate_data(res, task, num_labels):
             return res
     except:
         pass
     return []
 
-def validate_data(res):
+def validate_data(res, task, num_labels):
     for item in res:
-        if "Input" not in item or "Output" not in item:
-            return False
+        if task == "seq2seq":
+            if "Input" not in item or "Output" not in item:
+                return False
+        elif task == "classification":
+            if "text" not in item or "label" not in item or int(item["label"]) >= num_labels or int(item["label"]) < 0:
+                return False
     return True
 
 def split_data(res, split):

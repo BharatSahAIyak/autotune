@@ -3,6 +3,7 @@ from fastapi.security.api_key import APIKey, APIKeyHeader
 from celery.result import AsyncResult
 import aioredis
 import uuid
+import json
 
 from models import GenerationAndCommitRequest, ModelData
 from tasks import generate_and_push_data
@@ -44,6 +45,7 @@ async def train_model(req: ModelData,
                       huggingface_key: APIKey = Security(huggingface_key_scheme)
                       ):
     task = celery_app.send_task('worker.train_task', args=[dict(req), huggingface_key])
+    await redis_pool.hset(str(task.id), mapping={"status": "Acknowledged", "handler": "Celery"})
     return {'task_id': str(task.id)}
 
 
@@ -54,9 +56,15 @@ async def get_progress(task_id: str, response: Response):
         response.status_code = 404
     else:
         response.status_code = 200
-    return {"task_id": task_id, "response": res}
+        if "handler" in res and res["handler"] == "Celery":
+            cres = AsyncResult(task_id, app=celery_app)
+            if str(cres.status) == 'SUCCESS':
+                if isinstance(res['logs'], str):
+                    logs = json.loads(res['logs'])
+                else:
+                    logs = res['logs']
+                return {"status": res['status'], "response": logs}
+            return {'status': str(cres.status), 'response': cres.info}
+    return {"response": res}
 
-@app.get("/get_logs/{task_id}")
-async def get_logs(task_id: str):
-    res = AsyncResult(task_id, app=celery_app)
-    return {'status': str(res.status), 'logs': res.info}
+

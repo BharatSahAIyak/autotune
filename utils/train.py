@@ -1,5 +1,7 @@
 from transformers import TrainerCallback
 
+from .tasks import TextClassification, Seq2Seq
+
 
 class CeleryProgressCallback(TrainerCallback):
     def __init__(self, task):
@@ -9,9 +11,13 @@ class CeleryProgressCallback(TrainerCallback):
         self.task.update_state(state='TRAINING', meta=state.log_history)
 
 
-def tokenize_data(batch, tokenizer):
-    inputs = tokenizer(batch['Input'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')
-    outputs = tokenizer(batch['Output'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')
+def get_task_class(task):
+    tasks = {
+        'text_classification': TextClassification,
+        'seq2seq': Seq2Seq
+    }
 
-    inputs['labels'] = outputs['input_ids']
-    return inputs
+    task_class = tasks.get(task)
+    return task_class
+
+
