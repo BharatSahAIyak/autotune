@@ -17,3 +17,9 @@ class GenerationAndUpdateRequest(BaseModel):
     split: Literal['train', 'validation', 'test']
     task: Literal['text_classification', 'seq2seq']
     num_labels: Optional[int] = 2
+
+class ChatViewRequest(BaseModel):
+    prompt: str
+    num_samples: int
+    task: Literal['text_classification', 'seq2seq']
+    num_labels: Optional[int] = 2

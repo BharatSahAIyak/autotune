@@ -5,8 +5,8 @@ import aioredis
 import uuid
 import json
 
-from models import GenerationAndCommitRequest, GenerationAndUpdateRequest, ModelData
-from tasks import generate_and_push_data, generate_and_update_data
+from models import GenerationAndCommitRequest, GenerationAndUpdateRequest, ChatViewRequest, ModelData
+from tasks import generate_and_push_data, generate_and_update_data, generate_data
 from worker import celery_app
 
 
@@ -28,6 +28,15 @@ async def startup_event():
 async def shutdown_event():
     await redis_pool.close()
 
+@app.post("/data/view", status_code=202)
+async def chat_view(req: ChatViewRequest,
+                    background_tasks: BackgroundTasks,
+                    openai_key: APIKey = Security(openai_key_scheme)
+                    ):
+    task_id = str(uuid.uuid4())
+    await redis_pool.hset(task_id, mapping={"status": "Starting", "Progress": "None", "Detail": "None"})
+    background_tasks.add_task(generate_data, redis_pool, task_id, req, openai_key)
+    return {"status": "Accepted", "task_id": task_id}
 
 @app.post("/data", status_code=202)
 async def chat_completion(req: GenerationAndCommitRequest,
@@ -76,6 +85,13 @@ async def get_progress(task_id: str, response: Response):
                     logs = res['logs']
                 return {"status": res['status'], "response": logs}
             return {'status': str(cres.status), 'response': cres.info}
-    return {"response": res}
+        else:
+            try:
+                if isinstance(res['Detail'], str):
+                    detail = json.loads(res['Detail'])
+                    return {"status": res['status'], "response": detail["data"]}
+            except:
+                pass
+    return {"response": res["response"]}
 
 

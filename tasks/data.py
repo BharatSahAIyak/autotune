@@ -2,6 +2,7 @@ from fastapi import HTTPException
 from huggingface_hub import HfApi, CommitOperationAdd, HfFileSystem
 import pandas as pd
 from io import StringIO
+import json
 
 from utils import split_data, get_data, get_cols
 from models import GenerationAndCommitRequest, GenerationAndUpdateRequest
@@ -22,6 +23,9 @@ async def generate_data(redis, task_id, req: GenerationAndCommitRequest, openai_
         raise HTTPException(status_code=500, detail=detail)
     
     data["data"] = data["data"][:req.num_samples]
+    detail = {}
+    detail["data"] = data["data"] if len(data["data"]) < 50 else data["data"][:50] + "..."
+    await redis.hset(task_id, mapping={"status": "Generated", "Detail": json.dumps(detail)})
     return data
 
 
@@ -78,14 +82,12 @@ async def generate_and_update_data(redis, task_id, req: GenerationAndUpdateReque
 
         original_data = fs.read_text(path)
         original_data = pd.read_csv(StringIO(original_data))
+        columns_to_keep = get_cols(req.task)
+        original_data = original_data[columns_to_keep]
 
         df = pd.DataFrame(data["data"])
         
-        combined_df = pd.concat([df, original_data])
-        combined_df.reset_index(drop=True, inplace=True)
-
-        columns_to_keep = get_cols(req.task)
-        combined_df = combined_df[columns_to_keep]
+        combined_df = pd.concat([df, original_data]).reset_index(drop=True)
 
         with fs.open(path, "w") as f:
             combined_df.to_csv(f)
