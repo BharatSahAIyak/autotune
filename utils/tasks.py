@@ -1,4 +1,5 @@
 from transformers import AutoModelForSequenceClassification, AutoModelForSeq2SeqLM
+from optimum.onnxruntime import ORTModelForSequenceClassification, ORTModelForSeq2SeqLM
 from transformers import Trainer, Seq2SeqTrainer         
 from transformers import TrainingArguments, Seq2SeqTrainingArguments
 from transformers import DataCollatorWithPadding, DataCollatorForSeq2Seq
@@ -16,6 +17,7 @@ class Tasks(ABC):
         self.model_name = model_name
         self.dataset = dataset
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.onnx = None
         self.model = None
         self.data_collator = None
         self.Trainer = None
@@ -51,6 +53,7 @@ class TextClassification(Tasks):
     def __init__(self, model_name: str, dataset: Dataset):
         super().__init__("text_classification", model_name, dataset)
         self.metrics = evaluate.combine(["accuracy", "f1", "precision", "recall"])
+        self.onnx = ORTModelForSequenceClassification
 
     def _load_model_requirements(self):
         num_labels = len(self.dataset['train'].unique('label'))
@@ -76,6 +79,7 @@ class Seq2Seq(Tasks):
     def __init__(self, model_name: str, dataset: Dataset):
         super().__init__("seq2seq", model_name, dataset)
         self.metrics = evaluate.combine(["rouge", "bleu"])
+        self.onnx = ORTModelForSeq2SeqLM
 
     def _load_model_requirements(self):
         self.model = AutoModelForSeq2SeqLM.from_pretrained(self.model_name)
