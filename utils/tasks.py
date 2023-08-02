@@ -12,11 +12,11 @@ import evaluate
 
 
 class Tasks(ABC):
-    def __init__(self, task:str, model_name: str, dataset: Dataset):
+    def __init__(self, task:str, model_name: str, dataset: Dataset, version: str):
         self.task = task
         self.model_name = model_name
         self.dataset = dataset
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name, revision=version)
         self.onnx = None
         self.model = None
         self.data_collator = None
@@ -50,8 +50,8 @@ class Tasks(ABC):
 
 
 class TextClassification(Tasks):
-    def __init__(self, model_name: str, dataset: Dataset):
-        super().__init__("text_classification", model_name, dataset)
+    def __init__(self, model_name: str, dataset: Dataset, version: str):
+        super().__init__("text_classification", model_name, dataset, version)
         self.metrics = evaluate.combine(["accuracy", "f1", "precision", "recall"])
         self.onnx = ORTModelForSequenceClassification
 
@@ -76,8 +76,8 @@ class TextClassification(Tasks):
 
 
 class Seq2Seq(Tasks):
-    def __init__(self, model_name: str, dataset: Dataset):
-        super().__init__("seq2seq", model_name, dataset)
+    def __init__(self, model_name: str, dataset: Dataset, version: str):
+        super().__init__("seq2seq", model_name, dataset, version)
         self.metrics = evaluate.combine(["rouge", "bleu"])
         self.onnx = ORTModelForSeq2SeqLM
 

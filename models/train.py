@@ -8,3 +8,4 @@ class ModelData(BaseModel):
     epochs: Optional[float] = 1
     save_path: str
     task: Literal['text_classification', 'seq2seq']
+    version: Optional[str] = "main"

@@ -12,7 +12,7 @@ def train_model(celery, req, api_key):
     task_class = get_task_class(req['task'])
     dataset = load_dataset(req['dataset']).shuffle()
 
-    task = task_class(req['model'], dataset)
+    task = task_class(req['model'], dataset, req['version'])
 
     celery.update_state(state='TRAINING')
 
