@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Security, BackgroundTasks, Response
 from fastapi.security.api_key import APIKey, APIKeyHeader
 from celery.result import AsyncResult
+from huggingface_hub import HfApi
 import aioredis
 import uuid
 import json
@@ -68,6 +69,16 @@ async def train_model(req: ModelData,
     await redis_pool.hset(str(task.id), mapping={"status": "Acknowledged", "handler": "Celery"})
     return {'task_id': str(task.id)}
 
+@app.get("/commit")
+async def commit(repo_id: str, response: Response):
+    api = HfApi()
+    try:
+        commit_info = api.list_repo_commits(repo_id)
+    except Exception as e:
+        response.status_code = 404
+        return {"response": str(e)}
+    commit_info = [{"version": item.commit_id, "date": item.created_at} for item in commit_info if "pytorch_model.bin" in item.title]
+    return {"response": commit_info}
 
 @app.get("/track/{task_id}")
 async def get_progress(task_id: str, response: Response):

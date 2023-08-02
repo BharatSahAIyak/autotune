@@ -47,12 +47,16 @@ def train_model(celery, req, api_key):
     celery.update_state(state='PUSHING', meta=meta)
 
     login(token=api_key)
-    task.model.push_to_hub(req['save_path'])
+    task.model.push_to_hub(req['save_path'], commit_message="pytorch_model.bin upload/update")
     task.tokenizer.push_to_hub(req['save_path'])
 
     ort_model = task.onnx.from_pretrained(req['save_path'], export=True) # revision = req['version']
     ort_model.save_pretrained(f"./results_{celery.request.id}/onnx")
-    ort_model.push_to_hub(f"./results_{celery.request.id}/onnx",repository_id=req['save_path'], use_auth_token=True)
+    ort_model.push_to_hub(
+        f"./results_{celery.request.id}/onnx",
+        repository_id=req['save_path'], 
+        use_auth_token=True,
+    )
 
     hfApi = HfApi(endpoint='https://huggingface.co', token=api_key)
     hfApi.upload_file(
