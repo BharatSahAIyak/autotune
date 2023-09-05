@@ -10,7 +10,6 @@ from models import GenerationAndCommitRequest, GenerationAndUpdateRequest
 
 async def generate_data(redis, task_id, req: GenerationAndCommitRequest, openai_key):
     data = {"data": []}
-
     try:
         while len(data["data"]) < req.num_samples:
             res = await get_data(req.prompt, openai_key, req.task, req.num_labels)
@@ -21,10 +20,9 @@ async def generate_data(redis, task_id, req: GenerationAndCommitRequest, openai_
         detail = f"Failed to generate data: {str(e)}"
         await redis.hset(task_id, mapping={"status": "Error", "Progress": "None", "Detail": detail})
         raise HTTPException(status_code=500, detail=detail)
-    
     data["data"] = data["data"][:req.num_samples]
     detail = {}
-    detail["data"] = data["data"] if len(data["data"]) < 50 else data["data"][:50] + "..."
+    detail["data"] = data["data"] if len(data["data"]) < 50 else data["data"][:50]
     await redis.hset(task_id, mapping={"status": "Generated", "Detail": json.dumps(detail)})
     return data
 

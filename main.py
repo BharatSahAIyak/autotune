@@ -103,6 +103,6 @@ async def get_progress(task_id: str, response: Response):
                     return {"status": res['status'], "response": detail["data"]}
             except:
                 pass
-    return {"response": res["response"]}
+    return {"response": res}
 
 
