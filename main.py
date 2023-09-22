@@ -10,8 +10,19 @@ from models import GenerationAndCommitRequest, GenerationAndUpdateRequest, ChatV
 from tasks import generate_and_push_data, generate_and_update_data, generate_data
 from worker import celery_app
 
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+
+origins = ["*"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Security schemes
 openai_key_scheme = APIKeyHeader(name="X-OpenAI-Key")
@@ -103,6 +114,6 @@ async def get_progress(task_id: str, response: Response):
                     return {"status": res['status'], "response": detail["data"]}
             except:
                 pass
-    return {"response": res}
+    return {"status": res['status'], "response": {"Detail": res['Detail'], "Progress": res['Progress']}}
 
 
