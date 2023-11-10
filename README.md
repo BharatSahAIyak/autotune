@@ -14,6 +14,7 @@ python -m venv venv
 ```
 2. This project uses [poetry](https://python-poetry.org/docs/basic-usage/).
 ```
+```
 pip install poetry==1.5.1
 poetry install
 ```

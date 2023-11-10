@@ -7,7 +7,7 @@ license = "MIT"
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = ">=3.10,<3.12"
 fastapi = "^0.100.0"
 uvicorn = "^0.23.1"
 transformers = "^4.31.0"
@@ -21,6 +21,11 @@ evaluate = "^0.4.0"
 rouge-score = "^0.1.2"
 scikit-learn = "^1.3.0"
 optimum = {extras = ["exporters"], version = "^1.10.1"}
+python-dotenv = "^1.0.0"
+llama-index = "^0.8.66"
+langchain = "^0.0.333"
+dirtyjson = "^1.0.8"
+coloredlogs = "^15.0.1"
 
 
 [build-system]

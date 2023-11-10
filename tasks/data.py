@@ -12,25 +12,51 @@ async def generate_data(redis, task_id, req: GenerationAndCommitRequest, openai_
     data = {"data": []}
     try:
         while len(data["data"]) < req.num_samples:
-            res = await get_data(req.prompt, openai_key, req.task, req.num_labels)
+            res = await get_data(
+                req.prompt,
+                openai_key,
+                req.task,
+                req.labels,
+                req.num_labels,
+            )
             data["data"].extend(res)
             progress = min(100, len(data["data"]) / req.num_samples * 100)
-            await redis.hset(task_id, mapping={"status": "Processing", "Progress": f"{progress}%", "Detail": "Generating data"})
+            await redis.hset(
+                task_id,
+                mapping={
+                    "status": "Processing",
+                    "Progress": f"{progress}%",
+                    "Detail": "Generating data",
+                },
+            )
     except Exception as e:
         detail = f"Failed to generate data: {str(e)}"
-        await redis.hset(task_id, mapping={"status": "Error", "Progress": "None", "Detail": detail})
+        await redis.hset(
+            task_id, mapping={"status": "Error", "Progress": "None", "Detail": detail}
+        )
         raise HTTPException(status_code=500, detail=detail)
-    data["data"] = data["data"][:req.num_samples]
+    data["data"] = data["data"][: req.num_samples]
     detail = {}
     detail["data"] = data["data"] if len(data["data"]) < 50 else data["data"][:50]
-    await redis.hset(task_id, mapping={"status": "Generated", "Detail": json.dumps(detail)})
+    await redis.hset(
+        task_id, mapping={"status": "Generated", "Detail": json.dumps(detail)}
+    )
     return data
 
 
-async def generate_and_push_data(redis, task_id, req: GenerationAndCommitRequest, 
-                                 openai_key, huggingface_key
-                                 ):
+async def generate_and_push_data(
+    redis, task_id, req: GenerationAndCommitRequest, openai_key, huggingface_key
+):
     data = await generate_data(redis, task_id, req, openai_key)
+    await redis.hset(
+        task_id,
+        mapping={
+            "status": "Completed",
+            "Progress": "None",
+            "Detail": json.dumps(data),
+        },
+    )
+    return []
     train, test, val = {}, {}, {}
     train["data"], val["data"], test["data"] = split_data(data["data"], req.split)
 
@@ -38,14 +64,18 @@ async def generate_and_push_data(redis, task_id, req: GenerationAndCommitRequest
         hf_api = HfApi(endpoint="https://huggingface.co", token=huggingface_key)
     except Exception as e:
         detail = f"Failed to connect to HF: {str(e)}"
-        await redis.hset(task_id, mapping={"status": "Error", "Progress": "None", "Detail": detail})
+        await redis.hset(
+            task_id, mapping={"status": "Error", "Progress": "None", "Detail": detail}
+        )
         raise HTTPException(status_code=500, detail=detail)
 
     try:
         hf_api.create_repo(repo_id=req.repo, repo_type="dataset")
     except Exception as e:
         detail = f"Failed to create repo in HF: {str(e)}"
-        await redis.hset(task_id, mapping={"status": "Error", "Progress": "None", "Detail": detail})
+        await redis.hset(
+            task_id, mapping={"status": "Error", "Progress": "None", "Detail": detail}
+        )
         raise HTTPException(status_code=500, detail=detail)
 
     for split, d in zip(["train", "validation", "test"], [train, val, test]):
@@ -58,20 +88,24 @@ async def generate_and_push_data(redis, task_id, req: GenerationAndCommitRequest
                 repo_id=req.repo,
                 operations=[operation],
                 commit_message=f"Adding {split} csv file",
-                repo_type="dataset"
+                repo_type="dataset",
             )
         except Exception as e:
             detail = f"Failed to commit to repo in HF: {str(e)}"
-            await redis.hset(task_id, mapping={"status": "Error", "Progress": "None", "Detail": detail})
+            await redis.hset(
+                task_id,
+                mapping={"status": "Error", "Progress": "None", "Detail": detail},
+            )
             raise HTTPException(status_code=500, detail=detail)
 
-    await redis.hset(task_id, mapping={"status": "Completed", "Progress": "None", "Detail": "None"})
+    await redis.hset(
+        task_id, mapping={"status": "Completed", "Progress": "None", "Detail": "None"}
+    )
 
 
-async def generate_and_update_data(redis, task_id, req: GenerationAndUpdateRequest, 
-                                   openai_key, huggingface_key
-                                   ):
-    
+async def generate_and_update_data(
+    redis, task_id, req: GenerationAndUpdateRequest, openai_key, huggingface_key
+):
     data = await generate_data(redis, task_id, req, openai_key)
 
     try:
@@ -84,14 +118,18 @@ async def generate_and_update_data(redis, task_id, req: GenerationAndUpdateReque
         original_data = original_data[columns_to_keep]
 
         df = pd.DataFrame(data["data"])
-        
+
         combined_df = pd.concat([df, original_data]).reset_index(drop=True)
 
         with fs.open(path, "w") as f:
             combined_df.to_csv(f)
     except Exception as e:
         detail = f"Failed to update repo in HF: {str(e)}"
-        await redis.hset(task_id, mapping={"status": "Error", "Progress": "None", "Detail": detail})
+        await redis.hset(
+            task_id, mapping={"status": "Error", "Progress": "None", "Detail": detail}
+        )
         raise HTTPException(status_code=500, detail=detail)
 
-    await redis.hset(task_id, mapping={"status": "Completed", "Progress": "None", "Detail": "None"})
+    await redis.hset(
+        task_id, mapping={"status": "Completed", "Progress": "None", "Detail": "None"}
+    )
