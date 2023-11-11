@@ -3,7 +3,7 @@ import time
 
 dataset_response = dataset_generation(
     prompt="Create a dataset for text classification for sentiment analysis. The sentiments should be either positive or negative.",
-    num_samples=40,
+    num_samples=10000,
     repo="test",
     split=[80, 10, 10],
     task="text_classification",
@@ -18,7 +18,6 @@ while True:
     task = track_task(task_id)
     print(task)
     if task["status"] == "Completed":
-        print(task["response"])
         break
     print(
         "Still waiting for task {task_id} to complete...".format(task_id=task_id),

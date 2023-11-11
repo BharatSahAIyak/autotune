@@ -1,6 +1,7 @@
 import json
 import uuid
 import logging
+# import logging.config
 
 import aioredis
 from celery.result import AsyncResult
@@ -23,8 +24,18 @@ import string
 import time
 import coloredlogs
 
+import celery.signals
+
+
+@celery.signals.setup_logging.connect
+def on_celery_setup_logging(**kwargs):
+    pass
+
+
+app = FastAPI()
+
 # setup loggers
-logging.config.fileConfig("logging.conf", disable_existing_loggers=False)
+# logging.config.fileConfig("logging.conf", disable_existing_loggers=False)
 
 # get root logger
 logger = logging.getLogger(
@@ -33,8 +44,6 @@ logger = logging.getLogger(
 # This will get the root logger since no logger in the configuration has this name.
 
 coloredlogs.install(logger=logger)
-
-app = FastAPI()
 
 origins = ["*"]
 

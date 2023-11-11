@@ -1,0 +1,127 @@
+import asyncio
+import logging
+import json
+
+import coloredlogs
+
+from models.data import GenerationAndCommitRequest
+from utils import get_data
+
+logger = logging.getLogger(
+    __name__
+)  # the __name__ resolve to "main" since we are at the root of the project.
+# This will get the root logger since no logger in the configuration has this name.
+
+coloredlogs.install(logger=logger)
+logger.propagate = False
+
+
+class DataFetcher:
+    MAX_CONCURRENT_FETCHES = 30
+
+    def __init__(self, req: GenerationAndCommitRequest, openai_key, redis, task_id):
+        """
+
+        Initial state is either through Redis (if older progress is available) or create a new task.
+
+        Given that the number of valid results from LLM can be lesser than what is expected, it tries
+        to schedule more batches once the first batch is done. The algorithm is kept simple over aggressively optimizing it.
+
+        Since this happen only at the end of a single batch, it's a little slower than expected.
+        The expected time for the entire task is less than 2 mins for 50 batches. (1000 samples)
+
+        TODO: Data Store is currently redis. Which will become huge if not checked. Move that to a more stable DB.
+        TODO: The next batch can be more aggressively scheduled. (Although that would be premature optimization)
+
+        Parameters:
+            req (GenerationAndCommitRequest): The request object for generation and commit.
+            openai_key (str): The OpenAI API key.
+            redis (str): The Redis connection.
+            task_id (int): The task ID.
+
+        Returns:
+            None
+        """
+        self.req = req
+        self.openai_key = openai_key
+        self.redis = redis
+        self.task_id = task_id
+        self.data = {"data": []}
+        self.semaphore = asyncio.Semaphore(self.MAX_CONCURRENT_FETCHES)
+
+    async def _initialize_from_redis(self):
+        existing_data = await self.redis.hgetall(self.task_id)
+        if existing_data and "data" in existing_data:
+            self.data = json.loads(existing_data.get("data", self.data))
+            logger.info("Found existing data for task %s", self.task_id)
+            logger.info("Existing data total samples: %d", len(self.data))
+        else:
+            logger.info("No existing data found for task %s", self.task_id)
+
+    async def _fetch_and_update(self, batch_index):
+        async with self.semaphore:  # Acquire the semaphore
+            try:
+                res = await get_data(
+                    self.req.prompt,
+                    self.openai_key,
+                    self.req.task,
+                    self.req.labels,
+                    self.req.num_labels,
+                )
+                self.data["data"].extend(res)
+
+                progress = min(100, len(self.data["data"]) / self.req.num_samples * 100)
+
+                await self.redis.hset(
+                    self.task_id,
+                    mapping={
+                        "status": "Processing",
+                        "Progress": "%s%%" % progress,
+                        "Detail": "Generating data (Batch %s)" % batch_index,
+                        "data": json.dumps(self.data),
+                    },
+                )
+                logger.info(
+                    "Saved data to redis for task %s and Batch %s",
+                    self.task_id,
+                    batch_index,
+                )
+            except Exception as e:
+                logger.error(
+                    "Failed to fetch data for task %s and Batch %s: %s",
+                    self.task_id,
+                    batch_index,
+                    str(e),
+                )
+
+    async def _fetch_data(self):
+        await self._initialize_from_redis()
+        tasks = []
+        batch_size = 20
+        num_samples = self.req.num_samples
+        num_batches = max(
+            1, (num_samples - len(self.data["data"]) + batch_size - 1) // batch_size
+        )
+
+        for batch_index in range(num_batches):
+            task = self._fetch_and_update(batch_index)
+            tasks.append(task)
+
+        await asyncio.gather(*tasks)
+
+        logger.info(
+            "Iteration Completed. Current Total samples %d", len(self.data["data"])
+        )
+
+        if len(self.data["data"]) < num_samples:
+            logger.info(
+                "Need to fetch more data. Starting new iteration for task %s",
+                self.task_id,
+            )
+            await self._fetch_data()
+
+    async def fetch(self):
+        await self._fetch_data()
+        logger.info("Total samples downloaded %d", len(self.data["data"]))
+        logger.info("All Data Fetched - Returning data")
+        return self.data["data"]

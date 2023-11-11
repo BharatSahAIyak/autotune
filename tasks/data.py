@@ -1,46 +1,48 @@
-from fastapi import HTTPException
-from huggingface_hub import HfApi, CommitOperationAdd, HfFileSystem
-import pandas as pd
-from io import StringIO
 import json
+from io import StringIO
 
-from utils import split_data, get_data, get_cols
+import logging
+import coloredlogs
+
+import pandas as pd
+from fastapi import HTTPException
+from huggingface_hub import CommitOperationAdd, HfApi, HfFileSystem
+
 from models import GenerationAndCommitRequest, GenerationAndUpdateRequest
+from tasks.data_fetcher import DataFetcher
+from utils import get_cols, split_data
+
+logger = logging.getLogger(
+    __name__
+)  # the __name__ resolve to "main" since we are at the root of the project.
+# This will get the root logger since no logger in the configuration has this name.
+
+coloredlogs.install(logger=logger)
+logger.propagate = False
 
 
 async def generate_data(redis, task_id, req: GenerationAndCommitRequest, openai_key):
     data = {"data": []}
     try:
-        while len(data["data"]) < req.num_samples:
-            res = await get_data(
-                req.prompt,
-                openai_key,
-                req.task,
-                req.labels,
-                req.num_labels,
-            )
-            data["data"].extend(res)
-            progress = min(100, len(data["data"]) / req.num_samples * 100)
-            await redis.hset(
-                task_id,
-                mapping={
-                    "status": "Processing",
-                    "Progress": f"{progress}%",
-                    "Detail": "Generating data",
-                },
-            )
+        fetcher = DataFetcher(req, openai_key, redis, task_id)
+        d = await fetcher.fetch()
+        data["data"] = d
     except Exception as e:
         detail = f"Failed to generate data: {str(e)}"
         await redis.hset(
             task_id, mapping={"status": "Error", "Progress": "None", "Detail": detail}
         )
         raise HTTPException(status_code=500, detail=detail)
+
+    logger.info("Generated %s samples", len(data["data"]))
+    logger.info("Saving data to redis")
     data["data"] = data["data"][: req.num_samples]
     detail = {}
     detail["data"] = data["data"] if len(data["data"]) < 50 else data["data"][:50]
     await redis.hset(
         task_id, mapping={"status": "Generated", "Detail": json.dumps(detail)}
     )
+    logger.info("Task %s completed", task_id)
     return data
 
 

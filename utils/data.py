@@ -1,22 +1,21 @@
 import json
+import logging
 import time
 
-from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
-from langchain.chat_models import ChatOpenAI
-from langchain.schema.messages import SystemMessage
-
-from langchain.output_parsers import PydanticOutputParser
-from pydantic import BaseModel, Field
+import coloredlogs
 import dirtyjson
 import langchain
-import logging
-import coloredlogs
 from langchain.chains import LLMChain
+from langchain.chat_models import ChatOpenAI
+from langchain.output_parsers import PydanticOutputParser
+from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
+from langchain.schema.messages import SystemMessage
+from pydantic import BaseModel, Field
 
-langchain.debug = True
+langchain.debug = False
 
 # setup loggers
-logging.config.fileConfig("logging.conf", disable_existing_loggers=False)
+# logging.config.fileConfig("logging.conf", disable_existing_loggers=False)
 
 # get root logger
 logger = logging.getLogger(
@@ -110,7 +109,7 @@ async def generate(
         if len(parsed) < 20:
             logger.error("Only got %d responses", len(parsed))
     except Exception as e:
-        logger.error(str(e))
+        logger.error("Exception in parsing %s", str(e))
         parsed = []
 
     return parsed
@@ -121,7 +120,6 @@ async def get_data(system_content, api_key, task, labels, num_labels=None):
     user_content = f"Timestamp = {time_stamp}, {USER_CONTENT}"
     try:
         res = await generate(user_content, system_content, labels, api_key)
-        logger.info("Total correct responses %d", len(res))
         return res
     except Exception as e:
         logger.error("Error %e", e)
