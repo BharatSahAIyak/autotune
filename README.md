@@ -44,3 +44,16 @@ uvicorn main:app --port PORT_NUMBER --reload
 ```
 
 
+## Typical Workflow
+0. User is shown a login page to login using their Google account. (The account has to be of 'samagragovernance.in' domain). The user is then shown a settings page where they are nudged to update the API keys for OpenAI and HuggingFace. The user is also shown a list of all the repos they have access to on HuggingFace. The user can select the repo they want to work on and the settings are saved.
+1. User gives a prompt and samples are 5 generated automatically.
+2. User can view the 5 generated samples and select the ones they like and dislike.
+3. The prompt is updated with those examples and the process is repeated until the user is satisfied with the 5 samples.
+4. Once the user is satified, user provides the number of samples they want and the data is generated. The process is async and progress is shown to the user. The progress is tracked every 2 seconds.
+5. The data is generated and shown to the user, they give a go ahead and the dataset is pushed to huggingface. The `dataset` tab allows the user to view all the datasets that they have deployed until now on huggingface.
+6. A link is shared with the user so that they can view the data on huggingface.
+7. There is a tab called train, which allows user to use the dataset created earlier to train a model by filling a form. The process is async and progress is shown to the user. The progress is tracked every 2 seconds.
+8. Once trained the user is allowed to view the results of the model on the test set. The user can also view the results of the model on the validation set. The `models` tab allows the user to view all the models that they have deployed until now.
+9. The user is then nudged to deploy the model to huggingface. Once confirmed, the user is asked to provide a name for the model and the model is pushed to huggingface.
+10. A link is shared with the user so that they can view the model on huggingface and a curl is shared so that they can use the model for inference.
+11. The history tab allows the user to view all the tasks that they have performed until now.
