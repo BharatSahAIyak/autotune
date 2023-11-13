@@ -23,11 +23,9 @@ jobs:
         python-version: ${{ matrix.python-version }}
         cache: 'poetry'
     
-    - name: Install poetry
-      run: pip install poetry
-    
     - run: poetry install
-    - run: python --version
+    - run: pip list
+    - run: pytest --version
     - run: python -m pytest --cov
     
     - uses: AndreMiras/coveralls-python-action@v20201129
