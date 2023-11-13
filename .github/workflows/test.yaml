@@ -24,9 +24,8 @@ jobs:
         cache: 'poetry'
     
     - run: poetry install
-    - run: pip list
-    - run: pytest --version
-    - run: python -m pytest --cov
+    - run: poetry show --latest
+    - run: poetry run pytest --cov
     
     - uses: AndreMiras/coveralls-python-action@v20201129
       with:
