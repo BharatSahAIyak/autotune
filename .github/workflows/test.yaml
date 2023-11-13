@@ -22,9 +22,9 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
     
+    - run: poetry source add --priority=explicit pytorch-gpu-src https://download.pytorch.org/whl/cu118
+    - run: poetry add --source pytorch-gpu-src torch torchvision torchaudio
     - run: poetry install
-    - run: pip uninstall torch
-    - run: pip install torch --index-url https://download.pytorch.org/whl/cu118
     - run: poetry show --latest
     - run: poetry run pytest --cov
     
