@@ -23,6 +23,8 @@ jobs:
         python-version: ${{ matrix.python-version }}
     
     - run: poetry install
+    - run: pip uninstall torch
+    - run: pip install torch --index-url https://download.pytorch.org/whl/cu118
     - run: poetry show --latest
     - run: poetry run pytest --cov
     
