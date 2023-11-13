@@ -1,3 +1,5 @@
+[![Coverage Status](https://coveralls.io/repos/github/ChakshuGautam/AutoTuneNLP/badge.svg?branch=main)](https://coveralls.io/github/ChakshuGautam/AutoTuneNLP?branch=main)
+
 # AutoTuneNLP
 A comprehensive toolkit for seamless data generation and fine-tuning of NLP models, all conveniently packed into a single block.
 
