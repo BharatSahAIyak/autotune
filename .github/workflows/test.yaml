@@ -1,0 +1,35 @@
+name: Python CI
+
+on: [push, pull_request]
+
+jobs:
+  test:
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: [3.10, 3.11, 3.12]
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install poetry
+      run: pipx install poetry
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'poetry'
+    - uses: lpenz/ghaction-pytest-cov@v1
+    - uses: AndreMiras/coveralls-python-action@v20201129
+      with:
+        parallel: true
+        flag-name: python-${{ matrix.python-version }}
+
+  coverage-finish:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: AndreMiras/coveralls-python-action@v20201129
+      with:
+        parallel-finished: true

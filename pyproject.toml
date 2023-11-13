@@ -26,6 +26,12 @@ llama-index = "^0.8.66"
 langchain = "^0.0.333"
 dirtyjson = "^1.0.8"
 coloredlogs = "^15.0.1"
+pytest = "^7.4.3"
+pytest-asyncio = "^0.21.1"
+pytest-testmon = "^2.1.0"
+pytest-watch = "^4.2.0"
+coverage = "^7.3.2"
+pytest-cov = "^4.1.0"
 
 
 [build-system]

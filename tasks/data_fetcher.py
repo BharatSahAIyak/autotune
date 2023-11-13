@@ -5,7 +5,9 @@ import json
 import coloredlogs
 
 from models.data import GenerationAndCommitRequest
-from utils import get_data
+
+# from utils import get_data
+import utils
 
 logger = logging.getLogger(
     __name__
@@ -21,7 +23,6 @@ class DataFetcher:
 
     def __init__(self, req: GenerationAndCommitRequest, openai_key, redis, task_id):
         """
-
         Initial state is either through Redis (if older progress is available) or create a new task.
 
         Given that the number of valid results from LLM can be lesser than what is expected, it tries
@@ -48,6 +49,8 @@ class DataFetcher:
         self.task_id = task_id
         self.data = {"data": []}
         self.semaphore = asyncio.Semaphore(self.MAX_CONCURRENT_FETCHES)
+        self.status = None
+        self.iteration = 0
 
     async def _initialize_from_redis(self):
         existing_data = await self.redis.hgetall(self.task_id)
@@ -57,11 +60,12 @@ class DataFetcher:
             logger.info("Existing data total samples: %d", len(self.data))
         else:
             logger.info("No existing data found for task %s", self.task_id)
+        self.status = existing_data
 
     async def _fetch_and_update(self, batch_index):
         async with self.semaphore:  # Acquire the semaphore
             try:
-                res = await get_data(
+                res = await utils.get_data(
                     self.req.prompt,
                     self.openai_key,
                     self.req.task,
@@ -72,24 +76,29 @@ class DataFetcher:
 
                 progress = min(100, len(self.data["data"]) / self.req.num_samples * 100)
 
+                self.status = {
+                    "status": "Processing",
+                    "Progress": "%s%%" % progress,
+                    "Detail": "Generating data (Batch %s)" % batch_index,
+                    "data": json.dumps(self.data),
+                }
+
                 await self.redis.hset(
                     self.task_id,
-                    mapping={
-                        "status": "Processing",
-                        "Progress": "%s%%" % progress,
-                        "Detail": "Generating data (Batch %s)" % batch_index,
-                        "data": json.dumps(self.data),
-                    },
+                    mapping=self.status,
                 )
+
                 logger.info(
-                    "Saved data to redis for task %s and Batch %s",
+                    "Saved data to redis for task %s, iteration %d and Batch %s",
                     self.task_id,
+                    self.iteration,
                     batch_index,
                 )
             except Exception as e:
                 logger.error(
-                    "Failed to fetch data for task %s and Batch %s: %s",
+                    "Failed to fetch data for task %s, iteration %d and Batch %s: %s",
                     self.task_id,
+                    self.iteration,
                     batch_index,
                     str(e),
                 )
@@ -118,6 +127,7 @@ class DataFetcher:
                 "Need to fetch more data. Starting new iteration for task %s",
                 self.task_id,
             )
+            self.iteration += 1
             await self._fetch_data()
 
     async def fetch(self):

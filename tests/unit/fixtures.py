@@ -1,10 +1,4 @@
-import json
-
-from pydantic import BaseModel, Field
-from langchain.output_parsers import PydanticOutputParser
-import dirtyjson
-
-OUTPUT = """[
+REDIS_DATA = [
     {"text": "I absolutely love this product!", "label": "positive"},
     {"text": "This is the worst experience I've ever had.", "label": "negative"},
     {"text": "The service was exceptional and fast.", "label": "positive"},
@@ -35,23 +29,3 @@ OUTPUT = """[
     },
     {"text": "The instructions for this item were unclear.", "label": "negative"},
 ]
-"""
-
-
-class LabeledDataset(BaseModel):
-    text: str = Field(..., description="The text of the sample generated")
-    label: str = Field(..., description="The label of the sample generated")
-
-
-parser = PydanticOutputParser(pydantic_object=LabeledDataset)
-# json.loads(output)
-parsed = dirtyjson.loads(OUTPUT)
-parsed = list(parsed)
-data = []
-for i in parsed:
-    try:
-        parser.parse(json.dumps(dict(i)))
-        data.append(dict(i))
-    except Exception as e:
-        print(e)
-        pass
