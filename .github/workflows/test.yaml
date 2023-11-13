@@ -20,7 +20,8 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
         cache: 'poetry'
-    - uses: lpenz/ghaction-pytest-cov@v1
+    - run: poetry install
+    - run: poetry run pytest --cov
     - uses: AndreMiras/coveralls-python-action@v20201129
       with:
         parallel: true
