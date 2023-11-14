@@ -1,8 +1,6 @@
-import json
-
-from pydantic import BaseModel, Field
 from langchain.output_parsers import PydanticOutputParser
-import dirtyjson
+from pydantic import BaseModel, Field
+
 from utils.data import parse
 
 OUTPUT = """[

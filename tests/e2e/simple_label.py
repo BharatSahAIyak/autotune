@@ -1,5 +1,6 @@
-from .utils import dataset_generation, track_task
 import time
+
+from .utils import dataset_generation, track_task
 
 dataset_response = dataset_generation(
     prompt="Create a dataset for text classification for sentiment analysis. The sentiments should be either positive or negative.",

@@ -1,10 +1,14 @@
-import json
+import pandas as pd
+from huggingface_hub import CommitOperationAdd, HfApi
 
-import dirtyjson
-from langchain.output_parsers import PydanticOutputParser
-from pydantic import BaseModel, Field
+from utils import split_data
 
-OUTPUT = """[
+
+class HFException(Exception):
+    pass
+
+
+DATASET = [
     {"text": "I absolutely love this product!", "label": "positive"},
     {"text": "This is the worst experience I've ever had.", "label": "negative"},
     {"text": "The service was exceptional and fast.", "label": "positive"},
@@ -35,25 +39,41 @@ OUTPUT = """[
     },
     {"text": "The instructions for this item were unclear.", "label": "negative"},
 ]
-"""
 
 
-class LabeledDataset(BaseModel):
-    text: str = Field(..., description="The text of the sample generated")
-    label: str = Field(..., description="The label of the sample generated")
+async def push_dataset_to_hf(
+    data,
+    repo,
+    huggingface_key,
+    split=[80, 10, 10],
+):
+    train, test, val = {}, {}, {}
+    train["data"], val["data"], test["data"] = split_data(data["data"], split)
 
-
-parser = PydanticOutputParser(pydantic_object=LabeledDataset)
-# json.loads(output)
-parsed = dirtyjson.loads(OUTPUT)
-parsed = list(parsed)
-data = []
-for i in parsed:
     try:
-        parser.parse(json.dumps(dict(i)))
-        data.append(dict(i))
+        hf_api = HfApi(endpoint="https://huggingface.co", token=huggingface_key)
     except Exception as e:
-        print(e)
-        pass
+        detail = f"Failed to connect to HF: {str(e)}"
+        return HFException(detail)
 
-print(data)
+    try:
+        hf_api.create_repo(repo_id=repo, repo_type="dataset")
+    except Exception as e:
+        detail = f"Failed to create repo in HF: {str(e)}"
+        return HFException(detail)
+
+    for split, d in zip(["train", "validation", "test"], [train, val, test]):
+        df = pd.DataFrame(d["data"])
+        csv_data = df.to_csv()
+        file_data = csv_data.encode("utf-8")
+        operation = CommitOperationAdd(f"{split}.csv", file_data)
+        try:
+            hf_api.create_commit(
+                repo_id=repo,
+                operations=[operation],
+                commit_message=f"Adding {split} csv file",
+                repo_type="dataset",
+            )
+        except Exception as e:
+            detail = f"Failed to commit to repo in HF: {str(e)}"
+            return HFException(detail)
