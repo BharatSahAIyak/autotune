@@ -23,8 +23,6 @@ jobs:
         python-version: ${{ matrix.python-version }}
         cache: 'poetry'
     
-    - run: poetry source add --priority=explicit pytorch-gpu-src https://download.pytorch.org/whl/cu118
-    - run: poetry add --source pytorch-gpu-src torch
     - run: poetry install
     - run: poetry show --latest
     - run: poetry run pytest --cov --cov-report xml
@@ -55,8 +53,6 @@ jobs:
         python-version: ${{ matrix.python-version }}
         cache: 'poetry'
     
-    - run: poetry source add --priority=explicit pytorch-gpu-src https://download.pytorch.org/whl/cu118
-    - run: poetry add --source pytorch-gpu-src torch
     - run: poetry install
     - run: poetry show --latest
     - run: poetry run pytest --cov 
