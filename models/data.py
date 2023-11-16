@@ -10,6 +10,8 @@ class GenerationAndCommitRequest(BaseModel):
     task: Literal["text_classification", "seq2seq"]
     num_labels: Optional[int] = 2
     labels: Optional[list[str]]
+    valid_data: Optional[list[dict]]
+    invalid_data: Optional[list[dict]]
 
 
 class GenerationAndUpdateRequest(BaseModel):
@@ -19,6 +21,8 @@ class GenerationAndUpdateRequest(BaseModel):
     split: Literal["train", "validation", "test"]
     task: Literal["text_classification", "seq2seq"]
     num_labels: Optional[int] = 2
+    valid_data: Optional[list[dict]]
+    invalid_data: Optional[list[dict]]
 
 
 class ChatViewRequest(BaseModel):

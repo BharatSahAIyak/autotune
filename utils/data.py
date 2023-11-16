@@ -83,13 +83,14 @@ async def generate(
 
     user_content = f"Generate {num_samples} robust samples"
 
-    valid_data = json.dumps(valid_data, separators=(',', ':')).replace('},', '},\n')
-    invalid_data = json.dumps(invalid_data, separators=(',', ':')).replace('},', '},\n')
-
 
     template = "{format_instructions} \n {text}. \n The valid labels are {labels}. \n "
-    if valid_data : template = template + "The correctly labeled data is \n {valid_data}. \n "
-    if invalid_data: template = template + "The incorrectly labeled data is \n {invalid_data}.\n "
+    if valid_data : 
+        valid_data = json.dumps(valid_data, separators=(',', ':')).replace('},', '},\n')
+        template = template + "The correctly labeled data is \n {valid_data}. \n "
+    if invalid_data : 
+        invalid_data = json.dumps(invalid_data, separators=(',', ':')).replace('},', '},\n')
+        template = template + "The incorrectly labeled data is \n {invalid_data}.\n "
 
 
 
@@ -99,7 +100,7 @@ async def generate(
                 content=(
                     "You are a helpful data generation assistant. You generate labeled data for other models to learn from."
                     "You only generate data for 'valid labels' that you are given. You are given a question and a list of valid labels."
-                    "You are also given a list of correctly labeled data and incorrectly labeled data. You use these to improve the data generation."
+                    "You maybe also be given a list of correctly labeled data and incorrectly labeled data. You use these to improve the data generation."
                     "The data generated should be in the format of a list of dictionaries, where each dictionary has the keys 'text' and 'label'."
                     "You enclose the JSON values with double quotes"
                 )
@@ -130,11 +131,11 @@ async def generate(
     return parsed
 
 
-async def get_data(system_content, api_key, task, labels, num_labels=None):
+async def get_data(system_content, api_key, task, labels, num_labels=None, valid_data=None, invalid_data=None):
     time_stamp = str(int(time.time()))
     user_content = f"Timestamp = {time_stamp}, {USER_CONTENT}"
     try:
-        res = await generate(system_content, labels, api_key)
+        res = await generate(system_content, labels, api_key, valid_data=valid_data, invalid_data=invalid_data)
         return res
     except Exception as e:
         logger.error("Error %e", e)
