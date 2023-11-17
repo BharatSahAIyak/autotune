@@ -26,6 +26,8 @@ GENERATION_AND_COMMIT_REQUEST = GenerationAndCommitRequest(
     task="text_classification",
     num_labels=2,
     labels=["label1", "label2"],
+    valid_data=None,
+    invalid_data=None
 )
 
 redis_in_processing_mock_value = {
@@ -40,7 +42,7 @@ REDIS_NO_DATA = {
 }
 
 
-async def mock_get_data(system_content, api_key, task, labels, num_labels=None):
+async def mock_get_data(system_content, api_key, task, labels, num_labels=None, valid_data=None, invalid_data=None):
     # Simulate a wait time
     await asyncio.sleep(random.uniform(MIN_WAIT_TIME, MAX_WAIT_TIME))
 

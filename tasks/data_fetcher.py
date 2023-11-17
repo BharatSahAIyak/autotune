@@ -70,6 +70,8 @@ class DataFetcher:
                     self.req.task,
                     self.req.labels,
                     self.req.num_labels,
+                    self.req.valid_data,
+                    self.req.invalid_data
                 )
                 self.data["data"].extend(res)
 

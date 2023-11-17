@@ -41,7 +41,7 @@ def dataview(prompt, num_samples, task, num_labels):
     )
 
 
-def dataset_generation(prompt, num_samples, repo, split, task, num_labels, labels):
+def dataset_generation(prompt, num_samples, repo, split, task, num_labels, labels, valid_data=None, invalid_data=None):
     """
     Calls the Data API with the given parameters.
 
@@ -70,6 +70,8 @@ def dataset_generation(prompt, num_samples, repo, split, task, num_labels, label
             "task": task,
             "num_labels": num_labels,
             "labels": labels,
+            "valid_data" : valid_data,
+            "invalid_data": invalid_data
         },
         timeout=TIMEOUT,
     ).json()
@@ -151,5 +153,40 @@ def track_task(task_id):
     return requests.get(
         f"http://localhost:8000/track/{task_id}",
         headers={"X-HuggingFace-Key": HF_API_KEY},
+        timeout=TIMEOUT,
+    ).json()
+
+def sample_generation(prompt, num_samples, repo, split, task, num_labels, labels, valid_data=None, invalid_data=None):
+    """
+    Calls the Data API with the given parameters.
+
+    Args:
+        prompt (str): The prompt to use for generating samples.
+        num_samples (int): The number of samples to generate.
+        repo (str): The repository to push the generated data to.
+        split (list[int]): The split to use for the generated data.
+        task (str): The task to use for generating samples.
+        num_labels (int): The number of labels to use for the task.
+
+    Returns:
+        The response object returned by the API.
+    """
+    return requests.post(
+        "http://localhost:8000/sample",
+        headers={
+            "X-OpenAI-Key": OPEN_AI_API_KEY,
+            "X-HuggingFace-Key": HF_API_KEY,
+        },
+        json={
+            "prompt": prompt,
+            "num_samples": num_samples,
+            "repo": repo,
+            "split": split,
+            "task": task,
+            "num_labels": num_labels,
+            "labels": labels,
+            "valid_data" : valid_data,
+            "invalid_data": invalid_data
+        },
         timeout=TIMEOUT,
     ).json()
