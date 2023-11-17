@@ -1,13 +1,12 @@
 import asyncio
-import logging
 import json
+import logging
 
 import coloredlogs
 
-from models.data import GenerationAndCommitRequest
-
 # from utils import get_data
 import utils
+from models.data import GenerationAndCommitRequest
 
 logger = logging.getLogger(
     __name__

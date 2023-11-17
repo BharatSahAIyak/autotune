@@ -1,12 +1,13 @@
+import asyncio
+import hashlib
+import json
+import random
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from tasks.data_fetcher import DataFetcher
 from models import GenerationAndCommitRequest
-import asyncio
-import random
-import hashlib
+from tasks.data_fetcher import DataFetcher
 
 from .fixtures import REDIS_DATA
 
@@ -15,8 +16,6 @@ MAX_WAIT_TIME = 0.03  # Maximum wait time in seconds
 CHANCE_OF_LESS_RESULTS = 0.8  # 80% chance of returning less than 20 results
 MAX_RESULTS = 20  # Maximum number of results to return
 MIN_RESULTS = 1  # Minimum number of results to return when not empty
-
-import json
 
 
 GENERATION_AND_COMMIT_REQUEST = GenerationAndCommitRequest(

@@ -1,9 +1,8 @@
 import json
+import logging
 from io import StringIO
 
-import logging
 import coloredlogs
-
 import pandas as pd
 from fastapi import HTTPException
 from huggingface_hub import CommitOperationAdd, HfApi, HfFileSystem
@@ -59,6 +58,10 @@ async def generate_and_push_data(
         },
     )
     return []
+    await push_dataset_to_hf(redis, task_id, req, huggingface_key, data)
+
+
+async def push_dataset_to_hf(redis, task_id, req, huggingface_key, data):
     train, test, val = {}, {}, {}
     train["data"], val["data"], test["data"] = split_data(data["data"], req.split)
 

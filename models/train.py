@@ -1,5 +1,6 @@
+from typing import Literal, Optional
+
 from pydantic import BaseModel
-from typing import Optional, Literal
 
 
 class ModelData(BaseModel):
@@ -7,5 +8,5 @@ class ModelData(BaseModel):
     model: str
     epochs: Optional[float] = 1
     save_path: str
-    task: Literal['text_classification', 'seq2seq']
+    task: Literal["text_classification", "seq2seq"]
     version: Optional[str] = "main"

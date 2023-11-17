@@ -3,8 +3,8 @@ This module contains utility functions for AutoTuneNLP e2e tests.
 This calls the server APIs with the given parameters and returns the response object.
 """
 import os
-import requests
 
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()

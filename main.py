@@ -1,11 +1,15 @@
 import json
-import uuid
 import logging
-# import logging.config
+import random
+import string
+import time
+import uuid
 
 import aioredis
+import celery.signals
+import coloredlogs
 from celery.result import AsyncResult
-from fastapi import BackgroundTasks, FastAPI, Response, Security
+from fastapi import BackgroundTasks, FastAPI, Request, Response, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security.api_key import APIKey, APIKeyHeader
 from huggingface_hub import HfApi
@@ -18,13 +22,8 @@ from models import (
 )
 from tasks import generate_and_push_data, generate_and_update_data, generate_data
 from worker import celery_app
-from fastapi import Request
-import random
-import string
-import time
-import coloredlogs
 
-import celery.signals
+# import logging.config
 
 
 @celery.signals.setup_logging.connect

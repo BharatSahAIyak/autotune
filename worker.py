@@ -1,15 +1,13 @@
+import asyncio
+import json
 import logging
 import os
 from logging import handlers
 
-from celery import Celery
-import asyncio
 import aioredis
-import json
+from celery import Celery
 
 from tasks import train_model
-from celery.signals import after_setup_logger
-
 
 celery_app = Celery(
     "tasks",
