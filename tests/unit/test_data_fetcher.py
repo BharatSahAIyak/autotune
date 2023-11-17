@@ -26,6 +26,8 @@ GENERATION_AND_COMMIT_REQUEST = GenerationAndCommitRequest(
     task="text_classification",
     num_labels=2,
     labels=["label1", "label2"],
+    valid_data=None,
+    invalid_data=None
 )
 
 redis_in_processing_mock_value = {
