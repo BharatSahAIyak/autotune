@@ -163,3 +163,5 @@ cython_debug/
 .testmon*
 
 .prettierrc
+
+results_*

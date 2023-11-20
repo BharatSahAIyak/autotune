@@ -56,10 +56,10 @@ async def generate(
     system_content,
     labels,
     api_key,
+    num_samples,
     model="gpt-3.5-turbo",
     temperature=1,
     max_tokens=None,
-    num_samples=5,
     valid_data=None,
     invalid_data=None,
 ):
@@ -82,17 +82,24 @@ async def generate(
     )
 
     user_content = f"Generate {num_samples} robust samples"
+    template = ""
 
-
-    template = "{format_instructions} \n {text}. \n The valid labels are {labels}. \n "
-    if valid_data : 
-        valid_data = json.dumps(valid_data, separators=(',', ':')).replace('},', '},\n')
+    if valid_data:
+        valid_data = json.dumps(valid_data, separators=(",", ":")).replace("},", "},\n")
         template = template + "The correctly labeled data is \n {valid_data}. \n "
-    if invalid_data : 
-        invalid_data = json.dumps(invalid_data, separators=(',', ':')).replace('},', '},\n')
+    if invalid_data:
+        invalid_data = json.dumps(invalid_data, separators=(",", ":")).replace(
+            "},", "},\n"
+        )
         template = template + "The incorrectly labeled data is \n {invalid_data}.\n "
-
-
+    template = (
+        template
+        + "{format_instructions} \n {text}. \n The valid labels are {labels}. \n "
+    )
+    template = (
+        template
+        + "Provide an output that can be directly parsed by json.loads and provide JSON only. NO CONTEXT."
+    )
 
     prompt = ChatPromptTemplate.from_messages(
         [
@@ -126,16 +133,34 @@ async def generate(
             logger.error("Only got %d responses", len(parsed))
     except Exception as e:
         logger.error("Exception in parsing %s", str(e))
+        logger.error("Corrupted JSON: " + output)
         parsed = []
 
     return parsed
 
 
-async def get_data(system_content, api_key, task, labels, num_labels=None, valid_data=None, invalid_data=None):
-    time_stamp = str(int(time.time()))
-    user_content = f"Timestamp = {time_stamp}, {USER_CONTENT}"
+async def get_data(
+    system_content,
+    api_key,
+    task,
+    labels,
+    num_samples,
+    num_labels=None,
+    valid_data=None,
+    invalid_data=None,
+):
     try:
-        res = await generate(system_content, labels, api_key, valid_data=valid_data, invalid_data=invalid_data)
+        res = await generate(
+            system_content,
+            labels,
+            api_key,
+            num_samples,
+            model="gpt-3.5-turbo",
+            temperature=1,
+            max_tokens=None,
+            valid_data=valid_data,
+            invalid_data=invalid_data,
+        )
         return res
     except Exception as e:
         logger.error("Error %e", e)

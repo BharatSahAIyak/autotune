@@ -3,8 +3,11 @@ import json
 import os
 import shutil
 
+import torch
 from datasets import load_dataset
 from huggingface_hub import HfApi, login
+from torch.quantization import quantize_dynamic
+from transformers import AutoTokenizer
 
 from utils import CeleryProgressCallback, get_task_class
 
@@ -12,7 +15,6 @@ from utils import CeleryProgressCallback, get_task_class
 def train_model(celery, req, api_key):
     task_class = get_task_class(req["task"])
     dataset = load_dataset(req["dataset"]).shuffle()
-
     task = task_class(req["model"], dataset, req["version"])
 
     celery.update_state(state="TRAINING")
@@ -52,8 +54,10 @@ def train_model(celery, req, api_key):
     )
     task.tokenizer.push_to_hub(req["save_path"])
 
+    # quantized_model = quantize_dynamic(task.model, {torch.nn.Linear}, dtype=torch.qint8)
+
     ort_model = task.onnx.from_pretrained(
-        req["save_path"], export=True
+        task.model, export=True
     )  # revision = req['version']
     ort_model.save_pretrained(f"./results_{celery.request.id}/onnx")
     ort_model.push_to_hub(

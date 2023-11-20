@@ -4,6 +4,12 @@ import logging
 import os
 from logging import handlers
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
+print("PYTORCH_ENABLE_MPS_FALLBACK", os.environ["PYTORCH_ENABLE_MPS_FALLBACK"])
+
 import aioredis
 from celery import Celery
 
@@ -26,7 +32,7 @@ def train_task(self, req, api_key):
     meta = json.dumps(meta)
     task = loop.create_task(
         redis_pool.hset(
-            str(self.request.id), mapping={"status": "SUCCESS", "logs": meta}
+            str(self.request.id), mapping={"status": "COMPLETED", "logs": meta}
         )
     )
     loop.run_until_complete(task)

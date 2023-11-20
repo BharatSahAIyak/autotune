@@ -18,7 +18,7 @@ logger.propagate = False
 
 
 class DataFetcher:
-    MAX_CONCURRENT_FETCHES = 30
+    MAX_CONCURRENT_FETCHES = 10
 
     def __init__(self, req: GenerationAndCommitRequest, openai_key, redis, task_id):
         """
@@ -69,9 +69,10 @@ class DataFetcher:
                     self.openai_key,
                     self.req.task,
                     self.req.labels,
+                    self.req.num_samples if self.req.num_samples < 20 else 20,
                     self.req.num_labels,
                     self.req.valid_data,
-                    self.req.invalid_data
+                    self.req.invalid_data,
                 )
                 self.data["data"].extend(res)
 

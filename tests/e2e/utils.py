@@ -41,7 +41,17 @@ def dataview(prompt, num_samples, task, num_labels):
     )
 
 
-def dataset_generation(prompt, num_samples, repo, split, task, num_labels, labels, valid_data=None, invalid_data=None):
+def dataset_generation(
+    prompt,
+    num_samples,
+    repo,
+    split,
+    task,
+    num_labels,
+    labels,
+    valid_data=None,
+    invalid_data=None,
+):
     """
     Calls the Data API with the given parameters.
 
@@ -70,8 +80,8 @@ def dataset_generation(prompt, num_samples, repo, split, task, num_labels, label
             "task": task,
             "num_labels": num_labels,
             "labels": labels,
-            "valid_data" : valid_data,
-            "invalid_data": invalid_data
+            "valid_data": valid_data,
+            "invalid_data": invalid_data,
         },
         timeout=TIMEOUT,
     ).json()
@@ -110,7 +120,7 @@ def dataset_updation(prompt, num_samples, repo, split, task, num_labels):
     )
 
 
-def model_finetuning(dataset, model, epochs, save_path, task, version="main"):
+def model_training(dataset, model, epochs, save_path, task, version="main"):
     """
     Calls the Train API with the given parameters.
 
@@ -137,7 +147,7 @@ def model_finetuning(dataset, model, epochs, save_path, task, version="main"):
             "version": version,
         },
         timeout=TIMEOUT,
-    )
+    ).json()
 
 
 def track_task(task_id):
@@ -156,7 +166,18 @@ def track_task(task_id):
         timeout=TIMEOUT,
     ).json()
 
-def sample_generation(prompt, num_samples, repo, split, task, num_labels, labels, valid_data=None, invalid_data=None):
+
+def sample_generation(
+    prompt,
+    num_samples,
+    repo,
+    split,
+    task,
+    num_labels,
+    labels,
+    valid_data=None,
+    invalid_data=None,
+):
     """
     Calls the Data API with the given parameters.
 
@@ -185,8 +206,8 @@ def sample_generation(prompt, num_samples, repo, split, task, num_labels, labels
             "task": task,
             "num_labels": num_labels,
             "labels": labels,
-            "valid_data" : valid_data,
-            "invalid_data": invalid_data
+            "valid_data": valid_data,
+            "invalid_data": invalid_data,
         },
         timeout=TIMEOUT,
     ).json()
