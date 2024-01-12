@@ -42,7 +42,7 @@ REDIS_NO_DATA = {
 }
 
 
-async def mock_get_data(system_content, api_key, task, labels, num_labels=None, valid_data=None, invalid_data=None):
+async def mock_get_data(system_content, api_key, task, labels, num_labels=None, num_samples=None, valid_data=None, invalid_data=None):
     # Simulate a wait time
     await asyncio.sleep(random.uniform(MIN_WAIT_TIME, MAX_WAIT_TIME))
 
