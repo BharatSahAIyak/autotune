@@ -164,12 +164,13 @@ async def get_data(
     return []
 
 
-async def get_question(api_key, num_samples, content):
+async def get_question(api_key, num_samples, content, multiple_chunks):
     try:
         res = await generate_questions(
             api_key,
             num_samples,
             content,
+            multiple_chunks,
             model="gpt-3.5-turbo",
             temperature=1,
             max_tokens=None,
@@ -192,6 +193,7 @@ async def generate_questions(
     api_key,
     num_samples,
     content,
+    multiple_chunks,
     model="gpt-3.5-turbo",
     temperature=1,
     max_tokens=None,
@@ -212,10 +214,24 @@ async def generate_questions(
     template = (
         template + "- A list of Q&A pairs in JSON format. Ideally between 8-10 \n"
     )
-    template = (
-        template
-        + "Your task is to analyize the following text and generate questions and answers.\n"
-    )
+    if multiple_chunks:
+        template = (
+            template
+            + "Your task is to analyize the following two chunks of text and generate questions and answers.\n"
+        )
+        template = (
+            template
+            + "You can determine the linking of the chunks based on factors like natural flow of language between the two chunks, talking about similar topics,etc. \n"
+        )
+        template = (
+            template
+            + "If you determine chunks to have a continuity of 75% or above, generate questions based on a combined chunk. Else, just use the first chunk for questions\n"
+        )
+    else:
+        template = (
+            template
+            + "Your task is to analyize the following text and generate questions and answers.\n"
+        )
     template = template + f"{content} \n \n"
     template = (
         template

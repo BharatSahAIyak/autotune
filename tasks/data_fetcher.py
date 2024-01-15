@@ -77,6 +77,7 @@ class DataFetcher:
                         self.openai_key,
                         self.req.num_samples if self.req.num_samples < 20 else 20,
                         self.req.content,
+                        self.req.multiple_chunks,
                     )
                 else:
                     res = await utils.get_data(
