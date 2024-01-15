@@ -19,8 +19,16 @@ from models import (
     GenerationAndCommitRequest,
     GenerationAndUpdateRequest,
     ModelData,
+    QuestionCreationRequest,
+    QuestionUpdationRequest,
 )
-from tasks import generate_and_push_data, generate_and_update_data, generate_data
+from tasks import (
+    generate_and_push_data,
+    generate_and_push_questions,
+    generate_and_update_data,
+    generate_and_update_questions,
+    generate_data,
+)
 from worker import celery_app
 
 # import logging.config
@@ -161,6 +169,50 @@ async def chat_updation(
     )
     background_tasks.add_task(
         generate_and_update_data, redis_pool, task_id, req, openai_key, huggingface_key
+    )
+    return {"status": "Accepted", "task_id": task_id}
+
+
+@app.post("/question", status_code=202)
+async def question_generation(
+    req: QuestionCreationRequest,
+    background_tasks: BackgroundTasks,
+    openai_key: APIKey = Security(openai_key_scheme),
+    huggingface_key: APIKey = Security(huggingface_key_scheme),
+):
+    task_id = str(uuid.uuid4())
+    await redis_pool.hset(
+        task_id, mapping={"status": "Starting", "Progress": "None", "Detail": "None"}
+    )
+    background_tasks.add_task(
+        generate_and_push_questions,
+        redis_pool,
+        task_id,
+        req,
+        openai_key,
+        huggingface_key,
+    )
+    return {"status": "Accepted", "task_id": task_id}
+
+
+@app.put("/question", status_code=202)
+async def question_updation(
+    req: QuestionUpdationRequest,
+    background_tasks: BackgroundTasks,
+    openai_key: APIKey = Security(openai_key_scheme),
+    huggingface_key: APIKey = Security(huggingface_key_scheme),
+):
+    task_id = str(uuid.uuid4())
+    await redis_pool.hset(
+        task_id, mapping={"status": "Starting", "Progress": "None", "Detail": "None"}
+    )
+    background_tasks.add_task(
+        generate_and_update_questions,
+        redis_pool,
+        task_id,
+        req,
+        openai_key,
+        huggingface_key,
     )
     return {"status": "Accepted", "task_id": task_id}
 

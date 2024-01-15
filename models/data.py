@@ -26,3 +26,22 @@ class ChatViewRequest(BaseModel):
     num_samples: int
     task: Literal["text_classification", "seq2seq"]
     num_labels: Optional[int] = 2
+
+
+class QuestionCreationRequest(BaseModel):
+    num_samples: int
+    repo: str
+    split: Optional[list[int]] = [80, 10, 10]
+    content: str
+    index: int  # the row of the content in the csv file
+    multiple_chunks: bool = False
+
+
+class QuestionUpdationRequest(BaseModel):
+    num_samples: int
+    repo: str
+    split: Optional[list[int]] = [80, 10, 10]
+    content: str
+    index: int  # the row of the content in the csv file
+    multiple_chunks: bool = False
+    bulk_process: bool = False
