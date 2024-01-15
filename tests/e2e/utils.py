@@ -11,7 +11,7 @@ load_dotenv()
 
 
 HF_API_KEY = os.environ["HF_API_KEY"]
-OPEN_AI_API_KEY = os.environ["OPEN_AI_API_KEY"]
+OPEN_AI_API_KEY = os.environ["OPENAI_API_KEY"]
 TIMEOUT = 100
 
 

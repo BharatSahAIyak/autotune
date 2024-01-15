@@ -103,6 +103,7 @@ async def startup_event():
 async def shutdown_event():
     await redis_pool.close()
 
+
 @app.post("/sample", status_code=202)
 async def sample_generation(
     req: GenerationAndCommitRequest,
@@ -114,7 +115,6 @@ async def sample_generation(
     )
     data = await generate_data(redis_pool, task_id, req, openai_key)
     return {"response": data}
-
 
 
 @app.post("/data/view", status_code=202)

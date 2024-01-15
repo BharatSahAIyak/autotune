@@ -10,7 +10,7 @@ from sklearn.preprocessing import LabelEncoder
 
 from models import GenerationAndCommitRequest, GenerationAndUpdateRequest
 from tasks.data_fetcher import DataFetcher
-from utils import get_cols, split_data
+from utils import split_data
 
 logger = logging.getLogger(
     __name__
@@ -125,7 +125,7 @@ async def generate_and_update_data(
 
         original_data = fs.read_text(path)
         original_data = pd.read_csv(StringIO(original_data))
-        columns_to_keep = get_cols(req.task)
+        columns_to_keep = ["text", "label"]
         original_data = original_data[columns_to_keep]
 
         df = pd.DataFrame(data["data"])
