@@ -65,12 +65,9 @@ class DataFetcher:
         async with self.semaphore:  # Acquire the semaphore
             try:
                 res = await utils.get_data(
-                    self.req.prompt,
                     self.openai_key,
-                    self.req.task,
                     self.req.labels,
                     self.req.num_samples if self.req.num_samples < 20 else 20,
-                    self.req.num_labels,
                     self.req.valid_data,
                     self.req.invalid_data,
                 )

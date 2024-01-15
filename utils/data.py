@@ -1,6 +1,5 @@
 import json
 import logging
-import time
 
 import coloredlogs
 import dirtyjson
@@ -53,7 +52,6 @@ def parse(output, parser):
 
 
 async def generate(
-    system_content,
     labels,
     api_key,
     num_samples,
@@ -140,18 +138,14 @@ async def generate(
 
 
 async def get_data(
-    system_content,
     api_key,
-    task,
     labels,
     num_samples,
-    num_labels=None,
     valid_data=None,
     invalid_data=None,
 ):
     try:
         res = await generate(
-            system_content,
             labels,
             api_key,
             num_samples,
@@ -165,22 +159,6 @@ async def get_data(
     except Exception as e:
         logger.error("Error %e", e)
     return []
-
-
-def validate_data(res, task, num_labels):
-    for item in res:
-        if task == "seq2seq":
-            if "Input" not in item or "Output" not in item:
-                return False
-        elif task == "classification":
-            if (
-                "text" not in item
-                or "label" not in item
-                or int(item["label"]) >= num_labels
-                or int(item["label"]) < 0
-            ):
-                return False
-    return True
 
 
 def split_data(res, split):
