@@ -171,7 +171,7 @@ async def get_question(api_key, num_samples, content, multiple_chunks):
             num_samples,
             content,
             multiple_chunks,
-            model="gpt-3.5-turbo",
+            model="gpt-4-1106-preview",
             temperature=1,
             max_tokens=None,
         )
@@ -194,7 +194,7 @@ async def generate_questions(
     num_samples,
     content,
     multiple_chunks,
-    model="gpt-3.5-turbo",
+    model="gpt-4-1106-preview",
     temperature=1,
     max_tokens=None,
 ):
@@ -212,7 +212,7 @@ async def generate_questions(
 
     template = template + "Required Output: \n"
     template = (
-        template + "- A list of Q&A pairs in JSON format. Ideally between 8-10 \n"
+        template + "- A list of Q&A pair in JSON format. Generate only 1 question \n"
     )
     if multiple_chunks:
         template = (
@@ -221,11 +221,11 @@ async def generate_questions(
         )
         template = (
             template
-            + "You can determine the linking of the chunks based on factors like natural flow of language between the two chunks, talking about similar topics,etc. \n"
+            + "Generate a SINGLE question covering BOTH chunks. The context of the question should be broad enough to COVER BOTH CHUNKS \n"
         )
         template = (
             template
-            + "If you determine chunks to have a continuity of 75% or above, generate questions based on a combined chunk. Else, just use the first chunk for questions\n"
+            + "The question can be generalized a little so that there is coverage of information from BOTH CHUNKS \n"
         )
     else:
         template = (
@@ -235,7 +235,7 @@ async def generate_questions(
     template = template + f"{content} \n \n"
     template = (
         template
-        + " The questions generated shoud be UNIQUE, CRASTAL CLEAR, and INDEPENDANT of the text given. Use PRECISE TERMS in the questions \n"
+        + " The questions generated shoud be UNIQUE, CRYSTAL CLEAR, and INDEPENDANT of the text given. Use PRECISE TERMS in the questions \n"
     )
     template = (
         template
@@ -258,7 +258,8 @@ async def generate_questions(
         [
             SystemMessage(
                 content=(
-                    "You are a helpful data generation assistant. You create a set of questions and answers based on the given text assuming they will be asked by a farmer. You are an expert in this field"
+                    "You are a helpful data generation assistant.You create questions that are answered by an answer that combines information from both chunks chunk1 and chunk2."
+                    "You create a set of questions and answers based on the given text assuming they will be asked by a farmer. You are an expert in this field"
                     "Each question should closely match the language, terminology, and key phrases used in the text to ensure a high content overlap."
                     "Focus on extracting and reformulating specific sentences or phrases from the text as questions, and provide direct quotes or slight rephrasings from the text as answers."
                     "Ask questions that have longer answers. Keep the answers verbose."

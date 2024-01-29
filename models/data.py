@@ -35,6 +35,7 @@ class QuestionCreationRequest(BaseModel):
     content: str
     index: int  # the row of the content in the csv file
     multiple_chunks: bool = False
+    combined_index: Optional[str]  # required when sending in multiple chunks
 
 
 class QuestionUpdationRequest(BaseModel):
@@ -44,4 +45,5 @@ class QuestionUpdationRequest(BaseModel):
     content: str
     index: int  # the row of the content in the csv file
     multiple_chunks: bool = False
+    combined_index: Optional[str]  # required when sending in multiple chunks
     bulk_process: bool = False

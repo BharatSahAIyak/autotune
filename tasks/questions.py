@@ -38,7 +38,7 @@ async def generate_questions(
             task_id,
             mapping={
                 "status": "Error",
-                "content_row": req.index,
+                "content_row": req.combined_index if req.multiple_chunks else req.index,
                 "Progress": "None",
                 "Detail": detail,
             },
@@ -55,7 +55,7 @@ async def generate_questions(
         task_id,
         mapping={
             "status": "Generated",
-            "content_row": req.index,
+            "content_row": req.combined_index if req.multiple_chunks else req.index,
             "Detail": json.dumps(detail),
         },
     )
@@ -72,7 +72,7 @@ async def generate_and_push_questions(
         task_id,
         mapping={
             "status": "Completed",
-            "content_row": req.index,
+            "content_row": req.combined_index if req.multiple_chunks else req.index,
             "Progress": "None",
             "Detail": json.dumps(data),
         },
@@ -83,7 +83,7 @@ async def generate_and_push_questions(
 async def push_questionset_to_hf(redis, task_id, req, huggingface_key, data):
     train, test, val = {}, {}, {}
     train["data"], val["data"], test["data"] = split_data(data["data"], req.split)
-    repo_id = req.repo + "-" + task_id
+    repo_id = req.repo  # + "-" + task_id
 
     try:
         hf_api = HfApi(endpoint="https://huggingface.co", token=huggingface_key)
@@ -93,7 +93,7 @@ async def push_questionset_to_hf(redis, task_id, req, huggingface_key, data):
             task_id,
             mapping={
                 "status": "Error",
-                "content_row": req.index,
+                "content_row": req.combined_index if req.multiple_chunks else req.index,
                 "Progress": "None",
                 "Detail": detail,
             },
@@ -110,7 +110,7 @@ async def push_questionset_to_hf(redis, task_id, req, huggingface_key, data):
             task_id,
             mapping={
                 "status": "Error",
-                "content_row": req.index,
+                "content_row": req.combined_index if req.multiple_chunks else req.index,
                 "Progress": "None",
                 "Detail": detail,
             },
@@ -121,12 +121,18 @@ async def push_questionset_to_hf(redis, task_id, req, huggingface_key, data):
 
     for split, d in zip(["train", "validation", "test"], [train, val, test]):
         df = pd.DataFrame(d["data"])
-        df["content_row"] = req.index
+        logger.info(f"\n{df}")
+        if not req.multiple_chunks:
+            df["content_row"] = req.index
+        else:
+            df["content_row"] = req.combined_index
+        logger.info(f"\n{df}")
 
         csv_data = df.to_csv()
         file_data = csv_data.encode("utf-8")
 
         operation = CommitOperationAdd(f"{split}.csv", file_data)
+        logger.info(operation)
         try:
             hf_api.create_commit(
                 repo_id=repo_id,
@@ -138,6 +144,7 @@ async def push_questionset_to_hf(redis, task_id, req, huggingface_key, data):
             logger.info("Pushed %s data to HF", split)
         except Exception as e:
             logger.error("Failed to push %s data to HF", split)
+            logger.error(f"Failed to push data to HF {str(e)}")
             detail = f"Failed to commit to repo in HF: {str(e)}"
             await redis.hset(
                 task_id,
@@ -155,11 +162,11 @@ async def generate_and_update_questions(
 ):
     data = await generate_questions(redis, task_id, req, openai_key)
 
-    if (
-        req.bulk_process and req.index % 50 == 0
-    ):  # for multiple put requests, update HF once every 50 requests
-        await upload.get_redis_keys_status(redis, req, huggingface_key, task_id)
+    if req.bulk_process:  # for multiple put requests, update HF once every 50 requests
+        if req.index % 50 == 0:
+            await upload.get_redis_keys_status(redis, req, huggingface_key, task_id)
     else:
+        logger.info("Updating HF now")
         try:
             fs = HfFileSystem(token=huggingface_key)
 
