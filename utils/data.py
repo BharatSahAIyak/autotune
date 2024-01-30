@@ -185,11 +185,11 @@ async def get_question(
 
 
 class QuestionDataset(BaseModel):
-    question: str = Field(..., description="The question generated")
-    answer: str = Field(
-        ...,
-        description="The answer generated",
-    )
+    set: str = Field(..., description="The generated words")
+    # answer: str = Field(
+    #     ...,
+    #     description="The answer generated",
+    # )
 
 
 async def generate_questions(
@@ -292,6 +292,8 @@ async def generate_questions(
         content=content_array[0],
         format_instructions=parser.get_format_instructions(),
     )
+
+    logger.info(f"this is the output: \n{output}")
 
     try:
         parsed = parse(output, parser, True)
