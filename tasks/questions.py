@@ -83,7 +83,7 @@ async def generate_and_push_questions(
 async def push_questionset_to_hf(redis, task_id, req, huggingface_key, data):
     train, test, val = {}, {}, {}
     train["data"], val["data"], test["data"] = split_data(data["data"], req.split)
-    repo_id = req.repo  # + "-" + task_id
+    repo_id = req.repo + "-" + task_id
 
     try:
         hf_api = HfApi(endpoint="https://huggingface.co", token=huggingface_key)
@@ -121,18 +121,15 @@ async def push_questionset_to_hf(redis, task_id, req, huggingface_key, data):
 
     for split, d in zip(["train", "validation", "test"], [train, val, test]):
         df = pd.DataFrame(d["data"])
-        logger.info(f"\n{df}")
         if not req.multiple_chunks:
             df["content_row"] = req.index
         else:
             df["content_row"] = req.combined_index
-        logger.info(f"\n{df}")
 
         csv_data = df.to_csv()
         file_data = csv_data.encode("utf-8")
 
         operation = CommitOperationAdd(f"{split}.csv", file_data)
-        logger.info(operation)
         try:
             hf_api.create_commit(
                 repo_id=repo_id,

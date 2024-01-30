@@ -32,18 +32,24 @@ class QuestionCreationRequest(BaseModel):
     num_samples: int
     repo: str
     split: Optional[list[int]] = [80, 10, 10]
-    content: str
-    index: int  # the row of the content in the csv file
+    system_prompt: Optional[str] = None
+    user_prompt: Optional[str] = None
+    content: list[str]
+    index: Optional[int]  # the row of the content in the csv file
+    model: Optional[str] = "gpt-3.5-turbo"
     multiple_chunks: bool = False
-    combined_index: Optional[str]  # required when sending in multiple chunks
+    combined_index: Optional[str] = None  # required when sending in multiple chunks
 
 
 class QuestionUpdationRequest(BaseModel):
     num_samples: int
     repo: str
     split: Optional[list[int]] = [80, 10, 10]
-    content: str
-    index: int  # the row of the content in the csv file
+    system_prompt: Optional[str] = None
+    user_prompt: Optional[str] = None
+    content: list[str]
+    index: Optional[int]  # the row of the content in the csv file
+    model: Optional[str] = "gpt-3.5-turbo"
     multiple_chunks: bool = False
-    combined_index: Optional[str]  # required when sending in multiple chunks
+    combined_index: Optional[str] = None  # required when sending in multiple chunks
     bulk_process: bool = False
