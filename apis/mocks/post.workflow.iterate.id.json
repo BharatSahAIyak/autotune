@@ -1,0 +1,8 @@
+{
+    "model_used": "gpt_3.5",
+    "tokens_used": 2000,
+    "responses": {
+        "example1": "label",
+        "example2": "label"
+    }
+}
