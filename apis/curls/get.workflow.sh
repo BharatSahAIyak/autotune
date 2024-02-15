@@ -1,1 +1,0 @@
-curl --location 'localhost:8000/workflow?name=test01'

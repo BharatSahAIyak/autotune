@@ -1,3 +1,6 @@
+### Request
+
+```bash
 curl --location 'localhost:8000/workflow/iterate/workflow_key_01' \
 --header 'Content-Type: application/json' \
 --data '{
@@ -13,3 +16,25 @@ curl --location 'localhost:8000/workflow/iterate/workflow_key_01' \
     ],
     "llm_model": "gpt-4-0125-preview"
 }'
+```
+
+### Response
+
+```json
+{
+  "model_used": "gpt_3.5",
+  "tokens_used": 2000,
+  "responses": [
+    {
+      "text": "text for example 01",
+      "label": "<LABEL>",
+      "reason": "<REASON>"
+    },
+    {
+      "text": "text for example 02",
+      "label": "<LABEL>",
+      "reason": "<REASON>"
+    }
+  ]
+}
+```

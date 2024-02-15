@@ -1,1 +1,0 @@
-curl --location --request PUT 'localhost:8000/workflow'

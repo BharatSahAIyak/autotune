@@ -1,3 +1,6 @@
+### Request
+
+```bash
 curl --location 'localhost:8000/workflow/generate/workflow_key_01' \
 --header 'Content-Type: application/json' \
 --data '{
@@ -16,3 +19,14 @@ curl --location 'localhost:8000/workflow/generate/workflow_key_01' \
     "llm_model":"gpt-4-0125-preview",
     "model":"this is the model the response JSON needs to adhere to"
 }'
+```
+
+### Response
+
+```json
+{
+  "workflow_name": "<WORKFLOW_NAME>",
+  "workflow_id": "<UUID>",
+  "status": "Successfully started generation"
+}
+```
