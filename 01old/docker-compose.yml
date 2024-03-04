@@ -1,0 +1,39 @@
+version: "3.6"
+services:
+  app:
+    container_name: autotune-app
+    image: autotune:latest
+    build: ..
+    networks:
+      - communication
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: always
+    env_file:
+      - ../.env
+
+  postgres:
+    image: postgres:16.0-alpine
+    restart: always
+    ports:
+      - ${DATABASE_PORT}:5432
+    volumes:
+      - ./data/db:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: ${DATABASE_USER}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+      POSTGRES_DB: ${DATABASE_NAME}
+
+volumes:
+  db:
+
+networks:
+  communication:
+    name: communication
+#    external: true
