@@ -25,13 +25,21 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-mw9ses#+5^x7k^9by=we4ld8dv^$5qt=o+c8x3j1!h2xm0e2-q"
+SECRET_KEY = os.getenv('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv('DEBUG')
 
 ALLOWED_HOSTS = []
 
+# Open AI key
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+
+# Number of examples to generate in each iteration
+LLM_GENERATION_NUM_SAMPLES = os.getenv('LLM_GENERATION_NUM_SAMPLES')
+
+# Celery task retries
+CELERY_MAX_RETRIES = os.getenv('CELERY_MAX_RETRIES')
 
 # Application definition
 
@@ -42,11 +50,13 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "rest_framework",
     "workflow"
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -74,6 +84,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "autotune.wsgi.application"
+ASGI_APPLICATION = "autotune.asgi.application"
 
 
 # Database
@@ -126,6 +137,11 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
 STATIC_URL = "static/"
+STATIC_ROOT = os.path.join(BASE_DIR, '../staticfiles')
+
+STATICFILES_DIRS = [
+    os.path.join(BASE_DIR, 'staticfiles'),  # Adjust this path if your static files are located elsewhere
+]
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
@@ -133,6 +149,32 @@ STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
-# Celery settings
-CELERY_BROKER_URL = "redis://localhost:6381"
-CELERY_RESULT_BACKEND = "redis://localhost:6381"
+# Celery Configuration
+CELERY_BROKER_URL = 'redis://localhost:6379/0'
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'UTC'
+
+CELERY_MAX_RETRIES = 3
+
+CELERY_IMPORTS = ('myapp.tasks', )
+
+
+# Redis Configuration
+REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
+REDIS_PORT = os.getenv('REDIS_PORT', 6379)
+REDIS_DB = os.getenv('REDIS_DB', 1)
+
+
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": "redis://127.0.0.1:6379/1",
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        },
+    },
+}
+
