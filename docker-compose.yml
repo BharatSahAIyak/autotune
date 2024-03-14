@@ -22,7 +22,7 @@ services:
     image: postgres:16.0-alpine
     restart: always
     ports:
-      - ${DATABASE_PORT}:5432
+      - 60003:5432
     volumes:
       - db:/var/lib/postgresql/data
     environment:
