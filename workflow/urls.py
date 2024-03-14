@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from . import views
 from .views import create_workflow_with_prompt, WorkflowDetailView, PromptViewSet, WorkflowDuplicateView, \
-    WorkflowStatusView, WorkflowUpdateView, WorkflowSearchView
+    WorkflowStatusView, WorkflowUpdateView, WorkflowSearchView, TaskProgressView, GenerateTaskView
 
 # router = DefaultRouter()
 # router.register(r'prompts', PromptViewSet, basename='prompt')
@@ -18,5 +18,7 @@ urlpatterns = [
     path('workflow/<workflow_id>/duplicate/', WorkflowDuplicateView.as_view(), name='duplicate-workflow'),
     path('workflow/q/', WorkflowSearchView.as_view(), name='search-workflow'),
     path('workflow/status/<workflow_id>/', WorkflowStatusView.as_view(), name='workflow-status'),
+    path('generate/<uuid:workflow_id>/', GenerateTaskView.as_view(), name='generate-task'),
+    path('progress/<uuid:workflow_id>/', TaskProgressView.as_view(), name='task-progress'),
     # path('', include(router.urls)),
 ]

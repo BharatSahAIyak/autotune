@@ -13,6 +13,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from autotune.redis import redis_conn
+from .celery_task import create_and_dispatch_subtasks
 from .models import Workflows, Examples, Prompt, WorkflowConfig, Task
 from .serializers import WorkflowSerializer, PromptSerializer
 from .task import generate_or_refine
@@ -399,6 +400,23 @@ class WorkflowSearchView(ListAPIView):
 
 
 class TaskProgressView(APIView):
+    """
+        Get the progress of tasks associated with a specific workflow.
+
+        GET /progress/<workflow_id>/
+
+        Path Parameters:
+        - workflow_id (UUID): The unique identifier of the workflow to retrieve task progress for.
+
+        Responses:
+        - 200 OK: Returns the progress of tasks for the specified workflow.
+          {
+              "workflow_id": "some-workflow-id",
+              "progress": "75%"
+          }
+        - 404 Not Found: No tasks found for this workflow or the workflow does not exist.
+        - 500 Internal Server Error: A server error occurred.
+        """
     def get(self, request, workflow_id, *args, **kwargs):
         try:
             total_tasks = Task.objects.filter(workflow_id=workflow_id).count()
@@ -409,9 +427,54 @@ class TaskProgressView(APIView):
             completed_tasks = int(completed_tasks) if completed_tasks else 0
             progress_percent = (completed_tasks / total_tasks) * 100
 
-            return JsonResponse({"workflow_id": workflow_id, "progress": progress_percent}, status=200)
+            return JsonResponse({"workflow_id": workflow_id, "progress": f"{progress_percent}%"}, status=200)
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
+
+
+class GenerateTaskView(APIView):
+    """
+        Create tasks for a given workflow and dispatch them for processing.
+
+        PUT /generate/<workflow_id>/
+
+        Path Parameters:
+        - workflow_id (UUID): The unique identifier of the workflow for which to create and dispatch tasks.
+
+        Request Body:
+        - number (int): The number of tasks to create and dispatch.
+
+        Responses:
+        - 202 Accepted: Tasks creation and dispatch initiated successfully.
+          {
+              "message": "Tasks creation initiated",
+              "task_ids": ["some-task-id1", "some-task-id2", ...]  # List of IDs of created tasks
+          }
+        - 404 Not Found: The specified workflow does not exist.
+        - 500 Internal Server Error: A server error occurred.
+        """
+    def put(self, request, workflow_id, *args, **kwargs):
+        try:
+            workflow = Workflows.objects.get(id=workflow_id)
+        except Workflows.DoesNotExist:
+            return JsonResponse({"error": "Workflow not found"}, status=404)
+
+        data = request.data
+        number = data.get('number', 0)
+
+        task_ids = []
+        for _ in range(number):
+            task = Task.objects.create(
+                name=f"Task for Workflow {workflow_id}",
+                status="Starting",
+                workflow=workflow
+            )
+            task_ids.append(task.id)
+
+        # Dispatch subtasks (tasks can now be processed by their ID)
+        create_and_dispatch_subtasks(task_ids, workflow_id)
+
+        return JsonResponse({"message": "Tasks creation initiated", "task_ids": task_ids}, status=202)
 # what is task table
 # how to send prompt to llm on iteration
 # what is model and llm model in workflow
