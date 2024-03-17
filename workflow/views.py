@@ -1,11 +1,13 @@
 import json
 
 from asgiref.sync import sync_to_async
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
-from rest_framework import status, viewsets
+from django.views.decorators.csrf import csrf_exempt
+from rest_framework import status
 
 from rest_framework.decorators import api_view
 from rest_framework.generics import RetrieveAPIView, UpdateAPIView, ListAPIView
@@ -14,7 +16,7 @@ from rest_framework.views import APIView
 
 from autotune.redis import redis_conn
 from .celery_task import create_and_dispatch_subtasks
-from .models import Workflows, Examples, Prompt, WorkflowConfig, Task
+from .models import Workflows, Examples, Task
 from .serializers import WorkflowSerializer, PromptSerializer
 from .task import generate_or_refine
 
@@ -23,6 +25,7 @@ def index(request):
     return HttpResponse("Hello, world. You're at the workflow index.")
 
 
+@csrf_exempt
 @api_view(['POST'])
 def create_workflow_with_prompt(request):
     """
@@ -34,32 +37,22 @@ def create_workflow_with_prompt(request):
     {
         "workflow": {
             "workflow_name": "Data Analysis Workflow",
+            "workflow_type": "QnA",
             "total_examples": 1000,
-            "split": [70, 20, 10],
+            "split": [
+                70,
+                20,
+                10
+            ],
             "llm_model": "gpt-4-0125-preview",
             "cost": 200,
-            "tags": ["data analysis", "machine learning"],
-            "user": "UUID of the user"
+            "tags": [
+                "data analysis",
+                "machine learning"
+            ],
+            "user": "429088bd-73c4-454a-91c7-e29081b36531"
         },
-        "prompt": {
-            "system": "Optional system information",
-            "user": "Optional user information",
-            "json_schema": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "question": {"type": "string"},
-                        "answer": {"type": "string"}
-                    },
-                    "required": ["question", "answer"]
-                }
-            },
-            "parameters": {
-                "max_tokens": 150,
-                "temperature": 0.5
-            }
-        },
+        "user_prompt": "Create questions on world war 2 for class 8 students",
         "examples": [
             {
                 "text": "Example question about data analysis?",
@@ -128,7 +121,7 @@ def create_workflow_with_prompt(request):
 
 
 @api_view(['POST'])
-async def iterate_workflow(request, workflow_id):
+def iterate_workflow(request, workflow_id):
     """
         Iterates over a workflow by either adding new examples or refining existing ones based on the provided data.
         This operation can generate or refine questions and answers based on the examples associated with the workflow.
@@ -156,7 +149,7 @@ async def iterate_workflow(request, workflow_id):
         - A response object with the outcome of the iteration process. The response structure and data depend on the json schema defined in the configfunction.
     """
     workflow = get_object_or_404(Workflows, pk=workflow_id)
-    examples_exist = await sync_to_async(Examples.objects.filter)(
+    examples_exist = Examples.objects.filter(
         workflow_id=workflow_id,
         label__isnull=False
     ).exists()
@@ -178,7 +171,7 @@ async def iterate_workflow(request, workflow_id):
                 example.reason = reason
                 example.save()
 
-    response = await generate_or_refine(workflow_id, refine=examples_exist)
+    response = generate_or_refine(workflow, refine=examples_exist)
     return Response(response)
 
 
@@ -401,31 +394,34 @@ class WorkflowSearchView(ListAPIView):
 
 class TaskProgressView(APIView):
     """
-        Get the progress of tasks associated with a specific workflow.
+    Get the progress of tasks associated with a specific workflow.
 
-        GET /progress/<workflow_id>/
+    GET /progress/<workflow_id>/
 
-        Path Parameters:
-        - workflow_id (UUID): The unique identifier of the workflow to retrieve task progress for.
+    Path Parameters:
+    - workflow_id (UUID): The unique identifier of the workflow to retrieve task progress for.
 
-        Responses:
-        - 200 OK: Returns the progress of tasks for the specified workflow.
-          {
-              "workflow_id": "some-workflow-id",
-              "progress": "75%"
-          }
-        - 404 Not Found: No tasks found for this workflow or the workflow does not exist.
-        - 500 Internal Server Error: A server error occurred.
-        """
+    Responses:
+    - 200 OK: Returns the progress of tasks for the specified workflow.
+      {
+          "workflow_id": "some-workflow-id",
+          "progress": "75%"
+      }
+    - 404 Not Found: No tasks found for this workflow or the workflow does not exist.
+    - 500 Internal Server Error: A server error occurred.
+    """
     def get(self, request, workflow_id, *args, **kwargs):
         try:
-            total_tasks = Task.objects.filter(workflow_id=workflow_id).count()
-            if total_tasks == 0:
+            # Filter only main tasks (no parent_task)
+            main_tasks = Task.objects.filter(workflow_id=workflow_id, parent_task__isnull=True)
+            if not main_tasks.exists():
                 return JsonResponse({"error": "No tasks found for this workflow"}, status=404)
 
-            completed_tasks = redis_conn.hget(f"workflow_progress:{workflow_id}", "completed")
-            completed_tasks = int(completed_tasks) if completed_tasks else 0
-            progress_percent = (completed_tasks / total_tasks) * 100
+            total_main_tasks = main_tasks.count()
+            # Assuming 'Completed' status means all subtasks are also completed
+            completed_main_tasks = main_tasks.filter(status="Completed").count()
+
+            progress_percent = (completed_main_tasks / total_main_tasks) * 100
 
             return JsonResponse({"workflow_id": workflow_id, "progress": f"{progress_percent}%"}, status=200)
         except Exception as e:
@@ -460,14 +456,17 @@ class GenerateTaskView(APIView):
             return JsonResponse({"error": "Workflow not found"}, status=404)
 
         data = request.data
-        number = data.get('number', 0)
+        total_items = data.get('number', 0)
+        batch_size = getattr(settings, 'MAX_BATCH_SIZE', 10)
+
+        number_of_tasks = (total_items + batch_size - 1) // batch_size
 
         task_ids = []
-        for _ in range(number):
+        for _ in range(number_of_tasks):
             task = Task.objects.create(
-                name=f"Task for Workflow {workflow_id}",
+                name=f"Batch Task for Workflow {workflow_id}",
                 status="Starting",
-                workflow=workflow
+                workflow=workflow,
             )
             task_ids.append(task.id)
 

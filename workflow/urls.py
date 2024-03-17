@@ -10,10 +10,11 @@ from .views import create_workflow_with_prompt, WorkflowDetailView, WorkflowDupl
 
 urlpatterns = [
     path("", views.index, name="index"),
-    path('', create_workflow_with_prompt, name='create_workflow'),
+    path('create/', create_workflow_with_prompt, name='create_workflow'),
     path('<uuid:workflow_id>/', WorkflowDetailView.as_view(), name='workflow-detail'),
-    path('<int:workflow_id>/prompt/', views.retrieve_prompt, name='retrieve-prompt'),
-    path('<int:workflow_id>/prompt/update/', views.update_prompt, name='update-prompt'),
+    path('<uuid:workflow_id>/prompt/', views.retrieve_prompt, name='retrieve-prompt'),
+    path('<uuid:workflow_id>/iterate/', views.iterate_workflow, name='iterate-workflow'),
+    path('<uuid:workflow_id>/prompt/update/', views.update_prompt, name='update-prompt'),
     path('<workflow_id>/update/', WorkflowUpdateView.as_view(), name='update-workflow'),
     path('<workflow_id>/duplicate/', WorkflowDuplicateView.as_view(), name='duplicate-workflow'),
     path('q/', WorkflowSearchView.as_view(), name='search-workflow'),

@@ -30,7 +30,7 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG')
 
-ALLOWED_HOSTS = []
+# ALLOWED_HOSTS = []
 
 # Open AI key
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
@@ -38,8 +38,14 @@ OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 # Number of examples to generate in each iteration
 LLM_GENERATION_NUM_SAMPLES = os.getenv('LLM_GENERATION_NUM_SAMPLES')
 
+# Size for batching tasks
+MAX_BATCH_SIZE=os.getenv('MAX_BATCH_SIZE')
+
 # Celery task retries
 CELERY_MAX_RETRIES = os.getenv('CELERY_MAX_RETRIES')
+
+# HuggingFace token
+HUGGING_FACE_TOKEN = os.getenv('HUGGING_FACE_TOKEN')
 
 # Application definition
 
@@ -179,3 +185,15 @@ CACHES = {
     },
 }
 
+
+ALLOWED_HOSTS = ["*"]
+
+CORS_ALLOWED_ORIGINS = ["http://localhost:8000", "http://127.0.0.1:8000"]
+
+CORS_ORIGIN_WHITELIST = (
+
+    'localhost:8000',
+    'localhost',
+)
+
+CSRF_TRUSTED_ORIGINS = ['http://localhost:8000']

@@ -15,6 +15,10 @@ def validate_split(value):
         raise ValidationError("The sum of the values must be 100.")
 
 
+def default_split():
+    return [80, 10, 10]
+
+
 LLM_MODELS = [
     "gpt-4-0125-preview",
     "gpt-4-turbo-preview",
@@ -82,7 +86,7 @@ class Workflows(models.Model):
     total_examples = models.IntegerField()
     split = ArrayField(
         models.IntegerField(validators=[MinValueValidator(0), MaxValueValidator(100)]),
-        default=lambda: [80, 10, 10],
+        default=default_split,
         validators=[validate_split],
     )
     llm_model = models.CharField(
@@ -90,10 +94,8 @@ class Workflows(models.Model):
     )
     cost = models.IntegerField(default=0)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="workflow")
-    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE, related_name="workflow")
-    model = models.ForeignKey(MLModel, on_delete=models.CASCADE, related_name="+")
-
-    #
+    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE, related_name="workflow", blank=True, null=True)
+    model = models.ForeignKey(MLModel, on_delete=models.CASCADE, related_name="+", blank=True, null=True)
 
     # Status of Workflow
     status = models.CharField(
@@ -108,7 +110,7 @@ class Workflows(models.Model):
 class Examples(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    workflow = models.OneToOneField(
+    workflow = models.ForeignKey(
         Workflows, on_delete=models.CASCADE, related_name="examples"
     )
     example_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -135,9 +137,19 @@ class Task(models.Model):
     name = models.CharField(max_length=255)
     format = models.JSONField(default=dict)
     status = models.CharField(max_length=255, default="Starting")
+    parent_task = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='subtasks')
+    dataset = models.ForeignKey(Dataset, on_delete=models.SET_NULL, null=True, blank=True, related_name='tasks')
+    temp_data = models.TextField(blank=True, null=True)
     workflow = models.OneToOneField(
         "Workflows", on_delete=models.CASCADE, related_name="task"
     )
+
+    def set_temp_data(self, data):
+        self.temp_data = json.dumps(data)
+        self.save()
+
+    def get_temp_data(self):
+        return json.loads(self.temp_data) if self.temp_data else None
 
 
 class Log(models.Model):
