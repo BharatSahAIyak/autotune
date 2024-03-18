@@ -6,8 +6,8 @@ from django.utils import timezone
 
 from autotune.redis import redis_conn
 from workflow.models import Task, Dataset
-from workflow.task import call_llm_generate
-from workflow.utils import upload_dataset_to_hf
+from workflow.task import call_llm_generate, construct_prompt
+from workflow.utils import upload_dataset_to_hf, get_workflow_config
 
 
 @shared_task(bind=True, max_retries=settings.CELERY_MAX_RETRIES, retry_backoff=True)
@@ -17,7 +17,9 @@ def process_subtask(self, task_id):
         task.status = "Processing"
         task.save()
 
-        generated_data = call_llm_generate("Dummy Prompt", task.workflow, {})
+        config = get_workflow_config(task.workflow.workflow_type)
+        prompt_text = construct_prompt(task.workflow, config, True, task.total_number)
+        generated_data = call_llm_generate(prompt_text, task.workflow, {})
         task.temp_data = json.dumps(generated_data)
         task.status = "Completed"
         task.save()
@@ -58,7 +60,7 @@ def check_and_update_main_task(main_task_id):
         main_task.save()
 
 
-def create_and_dispatch_subtasks(main_task_id, number_of_subtasks, workflow_id):
+def create_and_dispatch_subtasks(main_task_id, workflow_id, number_of_subtasks):
     main_task = Task.objects.get(id=main_task_id)
 
     # Resetting Redis progress for the main task

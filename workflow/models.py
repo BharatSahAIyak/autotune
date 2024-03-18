@@ -140,6 +140,7 @@ class Task(models.Model):
     parent_task = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='subtasks')
     dataset = models.ForeignKey(Dataset, on_delete=models.SET_NULL, null=True, blank=True, related_name='tasks')
     temp_data = models.TextField(blank=True, null=True)
+    total_number = models.IntegerField(default=1)
     workflow = models.OneToOneField(
         "Workflows", on_delete=models.CASCADE, related_name="task"
     )

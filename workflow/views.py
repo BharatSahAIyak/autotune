@@ -467,11 +467,12 @@ class GenerateTaskView(APIView):
                 name=f"Batch Task for Workflow {workflow_id}",
                 status="Starting",
                 workflow=workflow,
+                total_items=total_items,
             )
             task_ids.append(task.id)
 
         # Dispatch subtasks (tasks can now be processed by their ID)
-        create_and_dispatch_subtasks(task_ids, workflow_id)
+        create_and_dispatch_subtasks(task_ids, workflow_id, total_items)
 
         return JsonResponse({"message": "Tasks creation initiated", "task_ids": task_ids}, status=202)
 # what is task table

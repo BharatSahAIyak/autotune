@@ -1,11 +1,25 @@
 from django.conf import settings
-from huggingface_hub import HfApi, HfFolder, Repository
+from django.core.cache import cache
+from django.shortcuts import get_object_or_404
+from huggingface_hub import HfApi, Repository
 import pandas as pd
 from datetime import datetime
 import os
 
+from workflow.models import WorkflowConfig
+
 
 def upload_dataset_to_hf(combined_data, dataset_name):
+    """
+        Uploads a dataset to Hugging Face under a generated repository name based on the dataset name and timestamp.
+        Parameters:
+            - combined_data (list of dict): The dataset to upload, represented as a list of dictionaries where each dictionary represents a row in the dataset.
+            - dataset_name (str): The base name for the dataset repository on Hugging Face. The actual repository name will also include a timestamp.
+        Returns:
+            - str: The name of the created repository on Hugging Face, which is the `dataset_name` appended with a timestamp.
+        Raises:
+            - HTTPError: An error occurred while trying to create the repository or upload the file to Hugging Face.
+    """
     huggingface_token = settings.HUGGING_FACE_TOKEN
     df = pd.DataFrame(combined_data)
 
@@ -32,3 +46,20 @@ def upload_dataset_to_hf(combined_data, dataset_name):
     repo.git_push()
 
     return repo_name
+
+
+def get_workflow_config(workflow_type):
+    """
+    Fetches a WorkflowConfig object from the cache or database by workflow_type.
+
+    :param workflow_type: The type of the workflow to fetch the config for.
+    :return: WorkflowConfig instance
+    raises: HTTPError: Http 404 if no workflow config found in db.
+    """
+    cache_key = f"workflow_config_{workflow_type}"
+    config = cache.get(cache_key)
+
+    if config is None:
+        get_object_or_404(WorkflowConfig, name=workflow_type)
+
+    return config
