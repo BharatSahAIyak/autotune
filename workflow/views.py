@@ -19,6 +19,7 @@ from .celery_task import create_and_dispatch_subtasks
 from .models import Workflows, Examples, Task
 from .serializers import WorkflowSerializer, PromptSerializer
 from .task import generate_or_refine
+from .utils import dehydrate_cache
 
 
 def index(request):
@@ -475,6 +476,17 @@ class GenerateTaskView(APIView):
         create_and_dispatch_subtasks(task_ids, workflow_id, total_items)
 
         return JsonResponse({"message": "Tasks creation initiated", "task_ids": task_ids}, status=202)
+
+
+@api_view(['GET'])
+def dehydrate_cache_view(request, key_pattern):
+    """
+    A simple view to dehydrate cache entries based on a key pattern.
+    """
+    dehydrate_cache(key_pattern)
+    return JsonResponse({'status': 'success', 'message': 'Cache dehydrated successfully.'})
+
+
 # what is task table
 # how to send prompt to llm on iteration
 # what is model and llm model in workflow

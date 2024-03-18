@@ -21,5 +21,6 @@ urlpatterns = [
     path('status/<workflow_id>/', WorkflowStatusView.as_view(), name='workflow-status'),
     path('generate/<uuid:workflow_id>/', GenerateTaskView.as_view(), name='generate-task'),
     path('progress/<uuid:workflow_id>/', TaskProgressView.as_view(), name='task-progress'),
+    path('dehydrate-cache/<str:key_pattern>/', views.dehydrate_cache_view, name='dehydrate-cache'),
     # path('', include(router.urls)),
 ]
