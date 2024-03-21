@@ -1,0 +1,53 @@
+version: "3.6"
+services:
+#  app:
+#    container_name: autotune-app
+#    image: autotune:latest
+#    build: ..
+#    networks:
+#      - communication
+#    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+#    deploy:
+#      resources:
+#        reservations:
+#          devices:
+#            - driver: nvidia
+#              count: 1
+#              capabilities: [gpu]
+#    restart: always
+#    env_file:
+#      - ../.env
+
+  postgres:
+    image: postgres:16.0-alpine
+    restart: always
+    ports:
+      - 60003:5432
+    volumes:
+      - db:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: "autotune"
+      POSTGRES_PASSWORD: "autotune"
+      POSTGRES_DB: "autotune"
+  gql:
+    image: hasura/graphql-engine:v2.7.0
+    ports:
+      - 15003:8080
+    environment:
+      HASURA_GRAPHQL_METADATA_DATABASE_URL: postgres://autotune:autotune@postgres:5432/autotune
+      HASURA_GRAPHQL_DATABASE_URL: postgres://autotune:autotune@postgres:5432/autotune
+      HASURA_GRAPHQL_ENABLE_CONSOLE: "true" # set to "false" to disable console
+      HASURA_GRAPHQL_DEV_MODE: "true"
+      HASURA_GRAPHQL_ENABLED_LOG_TYPES: startup, http-log, webhook-log, websocket-log, query-log
+      HASURA_GRAPHQL_ADMIN_SECRET: 4GeEB2JCU5rBdLvQ4AbeqqrPGu7kk9SZDhJUZm7A
+    depends_on:
+      - postgres
+    restart: always
+
+volumes:
+  db:
+
+networks:
+  communication:
+    name: communication
+#    external: true

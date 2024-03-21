@@ -1,3 +1,4 @@
+import json
 import uuid
 
 from django.contrib.postgres.fields import ArrayField
@@ -12,6 +13,10 @@ def validate_split(value):
         raise ValidationError("Exactly three values are required.")
     if sum(value) != 100:
         raise ValidationError("The sum of the values must be 100.")
+
+
+def default_split():
+    return [80, 10, 10]
 
 
 LLM_MODELS = [
@@ -57,6 +62,9 @@ class Dataset(models.Model):
 
 
 class Workflows(models.Model):
+    class WorkflowType(models.TextChoices):
+        QNA_EXAMPLE = 'QnA', _('QnA Example')
+
     class WorkflowStatus(models.TextChoices):
         SETUP = 'SETUP', _('Setup')
         ITERATION = 'ITERATION', _('Iteration')
@@ -69,14 +77,16 @@ class Workflows(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     workflow_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     workflow_name = models.CharField(max_length=255)
-    created = models.DateTimeField(auto_now_add=True)
-    modified = models.DateTimeField(auto_now=True)
-    name = models.CharField(max_length=255)
+    workflow_type = models.CharField(
+        max_length=50,
+        choices=WorkflowType.choices,
+        default=WorkflowType.QNA_EXAMPLE,
+    )
     tags = ArrayField(models.CharField(max_length=255))
     total_examples = models.IntegerField()
     split = ArrayField(
         models.IntegerField(validators=[MinValueValidator(0), MaxValueValidator(100)]),
-        default=[80, 10, 10],
+        default=default_split,
         validators=[validate_split],
     )
     llm_model = models.CharField(
@@ -84,10 +94,8 @@ class Workflows(models.Model):
     )
     cost = models.IntegerField(default=0)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="workflow")
-    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE, related_name="workflow")
-    model = models.ForeignKey(MLModel, on_delete=models.CASCADE, related_name="")
-
-    #
+    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE, related_name="workflow", blank=True, null=True)
+    model = models.ForeignKey(MLModel, on_delete=models.CASCADE, related_name="+", blank=True, null=True)
 
     # Status of Workflow
     status = models.CharField(
@@ -102,7 +110,7 @@ class Workflows(models.Model):
 class Examples(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    workflow = models.OneToOneField(
+    workflow = models.ForeignKey(
         Workflows, on_delete=models.CASCADE, related_name="examples"
     )
     example_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -114,6 +122,9 @@ class Examples(models.Model):
 class Prompt(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    user = models.TextField(blank=True, null=True)
+    source = models.TextField(blank=True, null=True)
+    workflow = models.OneToOneField(Workflows, on_delete=models.CASCADE, related_name='prompt')
 
 
 class Task(models.Model):
@@ -124,12 +135,22 @@ class Task(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
-    created = models.DateTimeField(auto_now_add=True)
-    modified = models.DateTimeField(auto_now=True)
     format = models.JSONField(default=dict)
+    status = models.CharField(max_length=255, default="Starting")
+    parent_task = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='subtasks')
+    dataset = models.ForeignKey(Dataset, on_delete=models.SET_NULL, null=True, blank=True, related_name='tasks')
+    temp_data = models.TextField(blank=True, null=True)
     workflow = models.OneToOneField(
         "Workflows", on_delete=models.CASCADE, related_name="task"
     )
+
+    def set_temp_data(self, data):
+        self.temp_data = json.dumps(data)
+        self.save()
+
+    def get_temp_data(self):
+        return json.loads(self.temp_data) if self.temp_data else None
+
 
 class Log(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
@@ -142,7 +163,15 @@ class Log(models.Model):
     latency_ms = models.IntegerField(default=-1)
 
 
+class WorkflowConfig(models.Model):
+    name = models.CharField(max_length=255, unique=True)
+    system_prompt = models.TextField()
+    user_prompt_template = models.TextField()
+    json_schema = models.JSONField(default=dict, blank=True, null=True)
+    parameters = models.JSONField(default=dict, blank=True, null=True)
 
+    def get_json_schema_as_dict(self):
+        return json.loads(self.json_schema)
 
-
-
+    def __str__(self):
+        return self.name
