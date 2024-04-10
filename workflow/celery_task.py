@@ -5,9 +5,9 @@ from django.conf import settings
 from django.utils import timezone
 
 from autotune.redis import redis_conn
-from workflow.models import Task, Dataset
+from workflow.models import Dataset, Task
 from workflow.task import call_llm_generate, construct_prompt
-from workflow.utils import upload_dataset_to_hf, get_workflow_config
+from workflow.utils import get_workflow_config, upload_dataset_to_hf
 
 
 @shared_task(bind=True, max_retries=settings.CELERY_MAX_RETRIES, retry_backoff=True)
@@ -45,8 +45,7 @@ def check_and_update_main_task(main_task_id):
             combined_data.extend(json.loads(subtask.temp_data))
 
         dataset, created = Dataset.objects.get_or_create(
-            id=main_task.dataset_id,
-            defaults={'name': f"Dataset for {main_task.name}"}
+            id=main_task.dataset_id, defaults={"name": f"Dataset for {main_task.name}"}
         )
 
         dataset_id, commit_hash = upload_dataset_to_hf(combined_data, dataset.name)
@@ -64,13 +63,15 @@ def create_and_dispatch_subtasks(main_task_id, workflow_id, number_of_subtasks):
     main_task = Task.objects.get(id=main_task_id)
 
     # Resetting Redis progress for the main task
-    redis_conn.hmset(f"task_progress:{main_task_id}", {"total": number_of_subtasks, "completed": 0})
+    redis_conn.hmset(
+        f"task_progress:{main_task_id}", {"total": number_of_subtasks, "completed": 0}
+    )
 
     for _ in range(number_of_subtasks):
         subtask = Task.objects.create(
             name=f"Subtask for {main_task.name}",
             status="Starting",
             workflow=main_task.workflow,
-            parent_task=main_task
+            parent_task=main_task,
         )
         process_subtask.delay(subtask.id, workflow_id)

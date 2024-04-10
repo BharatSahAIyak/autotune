@@ -63,15 +63,15 @@ class Dataset(models.Model):
 
 class Workflows(models.Model):
     class WorkflowType(models.TextChoices):
-        QNA_EXAMPLE = 'QnA', _('QnA Example')
+        QNA_EXAMPLE = "QnA", _("QnA Example")
 
     class WorkflowStatus(models.TextChoices):
-        SETUP = 'SETUP', _('Setup')
-        ITERATION = 'ITERATION', _('Iteration')
-        GENERATION = 'GENERATION', _('Generation')
-        TRAINING = 'TRAINING', _('Training')
-        PUSHING_DATASET = 'PUSHING_DATASET', _('Pushing Dataset')
-        PUSHING_MODEL = 'PUSHING_MODEL', _('Pushing Model')
+        SETUP = "SETUP", _("Setup")
+        ITERATION = "ITERATION", _("Iteration")
+        GENERATION = "GENERATION", _("Generation")
+        TRAINING = "TRAINING", _("Training")
+        PUSHING_DATASET = "PUSHING_DATASET", _("Pushing Dataset")
+        PUSHING_MODEL = "PUSHING_MODEL", _("Pushing Model")
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -94,8 +94,16 @@ class Workflows(models.Model):
     )
     cost = models.IntegerField(default=0)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="workflow")
-    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE, related_name="workflow", blank=True, null=True)
-    model = models.ForeignKey(MLModel, on_delete=models.CASCADE, related_name="+", blank=True, null=True)
+    dataset = models.ForeignKey(
+        Dataset,
+        on_delete=models.CASCADE,
+        related_name="workflow",
+        blank=True,
+        null=True,
+    )
+    model = models.ForeignKey(
+        MLModel, on_delete=models.CASCADE, related_name="+", blank=True, null=True
+    )
 
     # Status of Workflow
     status = models.CharField(
@@ -124,21 +132,28 @@ class Prompt(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     user = models.TextField(blank=True, null=True)
     source = models.TextField(blank=True, null=True)
-    workflow = models.OneToOneField(Workflows, on_delete=models.CASCADE, related_name='prompt')
+    workflow = models.OneToOneField(
+        Workflows, on_delete=models.CASCADE, related_name="prompt"
+    )
 
 
 class Task(models.Model):
     """
     This has the information about the different formats the response from the LLM model can be in.
     """
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
     format = models.JSONField(default=dict)
     status = models.CharField(max_length=255, default="Starting")
-    parent_task = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='subtasks')
-    dataset = models.ForeignKey(Dataset, on_delete=models.SET_NULL, null=True, blank=True, related_name='tasks')
+    parent_task = models.ForeignKey(
+        "self", on_delete=models.CASCADE, null=True, blank=True, related_name="subtasks"
+    )
+    dataset = models.ForeignKey(
+        Dataset, on_delete=models.SET_NULL, null=True, blank=True, related_name="tasks"
+    )
     temp_data = models.TextField(blank=True, null=True)
     total_number = models.IntegerField(default=1)
     workflow = models.OneToOneField(

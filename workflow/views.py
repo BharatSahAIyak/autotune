@@ -18,19 +18,24 @@ from autotune.redis import redis_conn
 
 from .celery_task import create_and_dispatch_subtasks
 from .models import Examples, Task, WorkflowConfig, Workflows
-from .serializers import (PromptSerializer, UserSerializer,
-                          WorkflowConfigSerializer, WorkflowSerializer)
+from .serializers import (
+    PromptSerializer,
+    UserSerializer,
+    WorkflowConfigSerializer,
+    WorkflowSerializer,
+)
 from .task import generate_or_refine
 from .utils import dehydrate_cache
 
 logger = logging.getLogger(__name__)
+
 
 def index(request):
     return HttpResponse("Hello, world. You're at the workflow index.")
 
 
 @csrf_exempt
-@api_view(['POST'])
+@api_view(["POST"])
 def create_workflow_with_prompt(request):
     """
     Creates a new workflow and its associated prompt
@@ -101,73 +106,78 @@ def create_workflow_with_prompt(request):
     """
 
     with transaction.atomic():
-        workflow_serializer = WorkflowSerializer(data=request.data.get('workflow', {}))
+        workflow_serializer = WorkflowSerializer(data=request.data.get("workflow", {}))
         if workflow_serializer.is_valid(raise_exception=True):
             workflow = workflow_serializer.save()
 
             prompt_data = {
-                "user": request.data.get('user_prompt', ''),
-                "workflow": workflow.pk
+                "user": request.data.get("user_prompt", ""),
+                "workflow": workflow.pk,
             }
 
             prompt_serializer = PromptSerializer(data=prompt_data)
             if prompt_serializer.is_valid(raise_exception=True):
                 prompt_serializer.save()
 
-                return Response({
-                    'workflow': workflow_serializer.data,
-                    'prompt': prompt_serializer.data
-                }, status=status.HTTP_201_CREATED)
+                return Response(
+                    {
+                        "workflow": workflow_serializer.data,
+                        "prompt": prompt_serializer.data,
+                    },
+                    status=status.HTTP_201_CREATED,
+                )
 
-    return Response({
-        'error': 'Invalid data for workflow or prompt',
-    }, status=status.HTTP_400_BAD_REQUEST)
+    return Response(
+        {
+            "error": "Invalid data for workflow or prompt",
+        },
+        status=status.HTTP_400_BAD_REQUEST,
+    )
 
 
-@api_view(['POST'])
+@api_view(["POST"])
 def iterate_workflow(request, workflow_id):
     """
-        Iterates over a workflow by either adding new examples or refining existing ones based on the provided data.
-        This operation can generate or refine questions and answers based on the examples associated with the workflow.
+    Iterates over a workflow by either adding new examples or refining existing ones based on the provided data.
+    This operation can generate or refine questions and answers based on the examples associated with the workflow.
 
-        Args:
-            request (HttpRequest): The request object containing 'examples' data.
-            workflow_id (int): The ID of the workflow to be iterated on.
+    Args:
+        request (HttpRequest): The request object containing 'examples' data.
+        workflow_id (int): The ID of the workflow to be iterated on.
 
-        Sample Request Payload:
-            {
-                "examples": [
-                    {
-                        "text": "What is AI?",
-                        "label": "positive",
-                        "reason": "Relevant to the field of study"
-                    },
-                    {
-                        "text": "What is 2 + 2?",
-                        "label": "negative",
-                        "reason": "Irrelevant question"
-                    }
-                ]
-            }
-        Returns:
-        - A response object with the outcome of the iteration process. The response structure and data depend on the json schema defined in the configfunction.
+    Sample Request Payload:
+        {
+            "examples": [
+                {
+                    "text": "What is AI?",
+                    "label": "positive",
+                    "reason": "Relevant to the field of study"
+                },
+                {
+                    "text": "What is 2 + 2?",
+                    "label": "negative",
+                    "reason": "Irrelevant question"
+                }
+            ]
+        }
+    Returns:
+    - A response object with the outcome of the iteration process. The response structure and data depend on the json schema defined in the configfunction.
     """
     workflow = get_object_or_404(Workflows, pk=workflow_id)
     examples_exist = Examples.objects.filter(
-        workflow_id=workflow_id,
-        label__isnull=False
+        workflow_id=workflow_id, label__isnull=False
     ).exists()
 
-    if 'examples' in request.data:
-        for example_data in request.data['examples']:
-            text = example_data.get('text')
-            label = example_data.get('label', '')
-            reason = example_data.get('reason', '')
+    if "examples" in request.data:
+        for example_data in request.data["examples"]:
+            text = example_data.get("text")
+            label = example_data.get("label", "")
+            reason = example_data.get("reason", "")
 
             example, created = Examples.objects.get_or_create(
                 workflow=workflow,
                 text=text,
-                defaults={'label': label, 'reason': reason}
+                defaults={"label": label, "reason": reason},
             )
 
             if not created:
@@ -213,12 +223,13 @@ class WorkflowDetailView(RetrieveAPIView):
         }
     }
     """
+
     queryset = Workflows.objects.all()
     serializer_class = WorkflowSerializer
-    lookup_field = 'workflow_id'
+    lookup_field = "workflow_id"
 
 
-@api_view(['PATCH'])
+@api_view(["PATCH"])
 def update_prompt(request, workflow_id):
     """
     Updates the user prompt or source for a given workflow's prompt.
@@ -249,8 +260,8 @@ def update_prompt(request, workflow_id):
     workflow = get_object_or_404(Workflows, pk=workflow_id)
     prompt = workflow.prompt
 
-    user_prompt = request.data.get('user')
-    source = request.data.get('source')
+    user_prompt = request.data.get("user")
+    source = request.data.get("source")
 
     if user_prompt is not None:
         prompt.user = user_prompt
@@ -262,7 +273,7 @@ def update_prompt(request, workflow_id):
     return Response(PromptSerializer(prompt).data)
 
 
-@api_view(['GET'])
+@api_view(["GET"])
 def retrieve_prompt(request, workflow_id):
     """
     Retrieves the prompt for a given workflow.
@@ -314,28 +325,30 @@ class WorkflowUpdateView(UpdateAPIView):
       }
     - 404 Not Found: If no workflow with the given ID exists.
     """
+
     queryset = Workflows.objects.all()
     serializer_class = WorkflowSerializer
-    lookup_field = 'workflow_id'
+    lookup_field = "workflow_id"
 
 
 class WorkflowDuplicateView(APIView):
     """
-        Duplicate an existing workflow, creating a new instance with a new ID.
+    Duplicate an existing workflow, creating a new instance with a new ID.
 
-        PUT /workflow/{workflow_id}/duplicate/
+    PUT /workflow/{workflow_id}/duplicate/
 
-        Parameters:
-        - workflow_id (URL Path): ID of the workflow to be duplicated.
+    Parameters:
+    - workflow_id (URL Path): ID of the workflow to be duplicated.
 
-        Responses:
-        - 201 Created: Workflow successfully duplicated.
-          {
-              "workflow_id": "new-workflow-id",
-              ...
-          }
-        - 404 Not Found: If no workflow with the given ID exists.
-        """
+    Responses:
+    - 201 Created: Workflow successfully duplicated.
+      {
+          "workflow_id": "new-workflow-id",
+          ...
+      }
+    - 404 Not Found: If no workflow with the given ID exists.
+    """
+
     def put(self, request, workflow_id):
         workflow = get_object_or_404(Workflows, workflow_id=workflow_id)
         workflow.pk = None
@@ -346,21 +359,22 @@ class WorkflowDuplicateView(APIView):
 
 class WorkflowStatusView(APIView):
     """
-        Retrieve the status of a specific workflow.
+    Retrieve the status of a specific workflow.
 
-        GET /workflow/status/{workflow_id}/
+    GET /workflow/status/{workflow_id}/
 
-        Parameters:
-        - workflow_id (URL Path): ID of the workflow whose status is to be retrieved.
+    Parameters:
+    - workflow_id (URL Path): ID of the workflow whose status is to be retrieved.
 
-        Responses:
-        - 200 OK: Successfully retrieved the status of the workflow.
-          {
-              "workflow_id": "workflow-id",
-              "status": "Workflow Status"
-          }
-        - 404 Not Found: If no workflow with the given ID exists.
-        """
+    Responses:
+    - 200 OK: Successfully retrieved the status of the workflow.
+      {
+          "workflow_id": "workflow-id",
+          "status": "Workflow Status"
+      }
+    - 404 Not Found: If no workflow with the given ID exists.
+    """
+
     def get(self, request, workflow_id):
         workflow = get_object_or_404(Workflows, workflow_id=workflow_id)
         return Response({"status": workflow.status})
@@ -386,11 +400,12 @@ class WorkflowSearchView(ListAPIView):
           ...
       ]
     """
+
     serializer_class = WorkflowSerializer
 
     def get_queryset(self):
-        tags_param = self.request.query_params.get('tags', '')
-        tags_query = tags_param.split(',') if tags_param else []
+        tags_param = self.request.query_params.get("tags", "")
+        tags_query = tags_param.split(",") if tags_param else []
         query = Q(tags__overlap=tags_query) if tags_query else Q()
         return Workflows.objects.filter(query)
 
@@ -413,12 +428,17 @@ class TaskProgressView(APIView):
     - 404 Not Found: No tasks found for this workflow or the workflow does not exist.
     - 500 Internal Server Error: A server error occurred.
     """
+
     def get(self, request, workflow_id, *args, **kwargs):
         try:
             # Filter only main tasks (no parent_task)
-            main_tasks = Task.objects.filter(workflow_id=workflow_id, parent_task__isnull=True)
+            main_tasks = Task.objects.filter(
+                workflow_id=workflow_id, parent_task__isnull=True
+            )
             if not main_tasks.exists():
-                return JsonResponse({"error": "No tasks found for this workflow"}, status=404)
+                return JsonResponse(
+                    {"error": "No tasks found for this workflow"}, status=404
+                )
 
             total_main_tasks = main_tasks.count()
             # Assuming 'Completed' status means all subtasks are also completed
@@ -426,32 +446,36 @@ class TaskProgressView(APIView):
 
             progress_percent = (completed_main_tasks / total_main_tasks) * 100
 
-            return JsonResponse({"workflow_id": workflow_id, "progress": f"{progress_percent}%"}, status=200)
+            return JsonResponse(
+                {"workflow_id": workflow_id, "progress": f"{progress_percent}%"},
+                status=200,
+            )
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
 
 
 class GenerateTaskView(APIView):
     """
-        Create tasks for a given workflow and dispatch them for processing.
+    Create tasks for a given workflow and dispatch them for processing.
 
-        PUT /generate/<workflow_id>/
+    PUT /generate/<workflow_id>/
 
-        Path Parameters:
-        - workflow_id (UUID): The unique identifier of the workflow for which to create and dispatch tasks.
+    Path Parameters:
+    - workflow_id (UUID): The unique identifier of the workflow for which to create and dispatch tasks.
 
-        Request Body:
-        - number (int): The number of tasks to create and dispatch.
+    Request Body:
+    - number (int): The number of tasks to create and dispatch.
 
-        Responses:
-        - 202 Accepted: Tasks creation and dispatch initiated successfully.
-          {
-              "message": "Tasks creation initiated",
-              "task_ids": ["some-task-id1", "some-task-id2", ...]  # List of IDs of created tasks
-          }
-        - 404 Not Found: The specified workflow does not exist.
-        - 500 Internal Server Error: A server error occurred.
-        """
+    Responses:
+    - 202 Accepted: Tasks creation and dispatch initiated successfully.
+      {
+          "message": "Tasks creation initiated",
+          "task_ids": ["some-task-id1", "some-task-id2", ...]  # List of IDs of created tasks
+      }
+    - 404 Not Found: The specified workflow does not exist.
+    - 500 Internal Server Error: A server error occurred.
+    """
+
     def put(self, request, workflow_id, *args, **kwargs):
         try:
             workflow = Workflows.objects.get(id=workflow_id)
@@ -459,8 +483,8 @@ class GenerateTaskView(APIView):
             return JsonResponse({"error": "Workflow not found"}, status=404)
 
         data = request.data
-        total_items = data.get('number', 0)
-        batch_size = getattr(settings, 'MAX_BATCH_SIZE', 10)
+        total_items = data.get("number", 0)
+        batch_size = getattr(settings, "MAX_BATCH_SIZE", 10)
 
         number_of_tasks = (total_items + batch_size - 1) // batch_size
 
@@ -477,33 +501,44 @@ class GenerateTaskView(APIView):
         # Dispatch subtasks (tasks can now be processed by their ID)
         create_and_dispatch_subtasks(task_ids, workflow_id, total_items)
 
-        return JsonResponse({"message": "Tasks creation initiated", "task_ids": task_ids}, status=202)
+        return JsonResponse(
+            {"message": "Tasks creation initiated", "task_ids": task_ids}, status=202
+        )
 
 
-@api_view(['GET'])
+@api_view(["GET"])
 def dehydrate_cache_view(request, key_pattern):
     """
     A simple view to dehydrate cache entries based on a key pattern.
     """
     dehydrate_cache(key_pattern)
-    return JsonResponse({'status': 'success', 'message': 'Cache dehydrated successfully.'})
+    return JsonResponse(
+        {"status": "success", "message": "Cache dehydrated successfully."}
+    )
 
 
-@api_view(['POST'])
+@api_view(["POST"])
 def create_workflow_config(request):
-    serializer= WorkflowConfigSerializer(data=request.data)
-    
+    serializer = WorkflowConfigSerializer(data=request.data)
+
     if serializer.is_valid():
         serializer.save()
-        return Response({"message": "Workflow config created successfully!", "config": serializer.data}, status=status.HTTP_201_CREATED)
+        return Response(
+            {
+                "message": "Workflow config created successfully!",
+                "config": serializer.data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
     else:
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-@api_view(['PATCH'])
-def update_workflow_config(request,config_id):
-    config= WorkflowConfig.objects.get(id=config_id)
+
+
+@api_view(["PATCH"])
+def update_workflow_config(request, config_id):
+    config = WorkflowConfig.objects.get(id=config_id)
     serializer = WorkflowConfigSerializer(config, data=request.data, partial=True)
-    
+
     if serializer.is_valid():
         serializer.save()
         return Response(serializer.data)
@@ -511,20 +546,25 @@ def update_workflow_config(request,config_id):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-@api_view(['POST'])
+@api_view(["POST"])
 def add_user(request):
     serializer = UserSerializer(data=request.data)
-    
+
     if serializer.is_valid():
         serializer.save()
-        return Response({"message": "User created successfully!", "user": serializer.data}, status=status.HTTP_201_CREATED)
+        return Response(
+            {"message": "User created successfully!", "user": serializer.data},
+            status=status.HTTP_201_CREATED,
+        )
     else:
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-@api_view(['POST'])
+
+@api_view(["POST"])
 def train(request):
     # TBD
-    return JsonResponse({"message":"hey"})
+    return JsonResponse({"message": "hey"})
+
 
 # what is task table
 # how to send prompt to llm on iteration
