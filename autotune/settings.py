@@ -166,7 +166,7 @@ CELERY_TIMEZONE = 'UTC'
 
 CELERY_MAX_RETRIES = 3
 
-CELERY_IMPORTS = ('myapp.tasks', )
+# CELERY_IMPORTS = ('myapp.tasks', )
 
 
 # Redis Configuration
@@ -197,3 +197,21 @@ CORS_ORIGIN_WHITELIST = (
 )
 
 CSRF_TRUSTED_ORIGINS = ['http://localhost:8000']
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'level': 'DEBUG',
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        '': { 
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+    },
+}

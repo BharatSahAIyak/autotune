@@ -1,4 +1,5 @@
 import json
+import logging
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
@@ -8,19 +9,21 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status
-
 from rest_framework.decorators import api_view
-from rest_framework.generics import RetrieveAPIView, UpdateAPIView, ListAPIView
+from rest_framework.generics import ListAPIView, RetrieveAPIView, UpdateAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from autotune.redis import redis_conn
+
 from .celery_task import create_and_dispatch_subtasks
-from .models import Workflows, Examples, Task
-from .serializers import WorkflowSerializer, PromptSerializer
+from .models import Examples, Task, WorkflowConfig, Workflows
+from .serializers import (PromptSerializer, UserSerializer,
+                          WorkflowConfigSerializer, WorkflowSerializer)
 from .task import generate_or_refine
 from .utils import dehydrate_cache
 
+logger = logging.getLogger(__name__)
 
 def index(request):
     return HttpResponse("Hello, world. You're at the workflow index.")
@@ -171,7 +174,6 @@ def iterate_workflow(request, workflow_id):
                 example.label = label
                 example.reason = reason
                 example.save()
-
     response = generate_or_refine(workflow, refine=examples_exist)
     return Response(response)
 
@@ -486,6 +488,43 @@ def dehydrate_cache_view(request, key_pattern):
     dehydrate_cache(key_pattern)
     return JsonResponse({'status': 'success', 'message': 'Cache dehydrated successfully.'})
 
+
+@api_view(['POST'])
+def create_workflow_config(request):
+    serializer= WorkflowConfigSerializer(data=request.data)
+    
+    if serializer.is_valid():
+        serializer.save()
+        return Response({"message": "Workflow config created successfully!", "config": serializer.data}, status=status.HTTP_201_CREATED)
+    else:
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+@api_view(['PATCH'])
+def update_workflow_config(request,config_id):
+    config= WorkflowConfig.objects.get(id=config_id)
+    serializer = WorkflowConfigSerializer(config, data=request.data, partial=True)
+    
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data)
+    else:
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+def add_user(request):
+    serializer = UserSerializer(data=request.data)
+    
+    if serializer.is_valid():
+        serializer.save()
+        return Response({"message": "User created successfully!", "user": serializer.data}, status=status.HTTP_201_CREATED)
+    else:
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+def train(request):
+    # TBD
+    return JsonResponse({"message":"hey"})
 
 # what is task table
 # how to send prompt to llm on iteration
