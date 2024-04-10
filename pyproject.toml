@@ -41,6 +41,7 @@ jsonschema="^4.21.1"
 langchain-core="^0.1.40"
 langchain-openai="^0.1.0"
 whitenoise="^6.6.0"
+psycopg_binary="^3.1.18"
 
 [build-system]
 requires = ["poetry-core"]

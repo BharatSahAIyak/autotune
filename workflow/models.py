@@ -114,7 +114,7 @@ class Examples(models.Model):
         Workflows, on_delete=models.CASCADE, related_name="examples"
     )
     example_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    text = models.TextField()
+    text = models.JSONField(default=dict)
     label = models.CharField(max_length=255)
     reason = models.TextField(max_length=255)
 
@@ -165,6 +165,7 @@ class Log(models.Model):
 
 
 class WorkflowConfig(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255, unique=True)
     system_prompt = models.TextField()
     user_prompt_template = models.TextField()
