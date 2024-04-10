@@ -1,6 +1,7 @@
 import json
 
 from celery import shared_task
+from celery.utils.log import get_task_logger
 from django.conf import settings
 from django.utils import timezone
 
@@ -9,6 +10,8 @@ from workflow.models import Dataset, Task
 from workflow.task import call_llm_generate, construct_prompt
 from workflow.utils import get_workflow_config, upload_dataset_to_hf
 
+logger = get_task_logger(__name__)
+
 
 @shared_task(bind=True, max_retries=settings.CELERY_MAX_RETRIES, retry_backoff=True)
 def process_subtask(self, task_id):
@@ -16,9 +19,10 @@ def process_subtask(self, task_id):
         task = Task.objects.get(id=task_id)
         task.status = "Processing"
         task.save()
-
         config = get_workflow_config(task.workflow.workflow_type)
-        prompt_text = construct_prompt(task.workflow, config, True, task.total_number)
+        prompt_text = construct_prompt(
+            task.workflow, config, True, task.workflow.total_number
+        )
         generated_data = call_llm_generate(prompt_text, task.workflow, {})
         task.temp_data = json.dumps(generated_data)
         task.status = "Completed"
@@ -59,12 +63,11 @@ def check_and_update_main_task(main_task_id):
         main_task.save()
 
 
-def create_and_dispatch_subtasks(main_task_id, workflow_id, number_of_subtasks):
-    main_task = Task.objects.get(id=main_task_id)
+def create_and_dispatch_subtasks(task_id, workflow_id, number_of_subtasks):
+    main_task = Task.objects.get(id=task_id)
 
-    # Resetting Redis progress for the main task
     redis_conn.hmset(
-        f"task_progress:{main_task_id}", {"total": number_of_subtasks, "completed": 0}
+        f"task_progress:{task_id}", {"total": number_of_subtasks, "completed": 0}
     )
 
     for _ in range(number_of_subtasks):
@@ -74,4 +77,4 @@ def create_and_dispatch_subtasks(main_task_id, workflow_id, number_of_subtasks):
             workflow=main_task.workflow,
             parent_task=main_task,
         )
-        process_subtask.delay(subtask.id, workflow_id)
+        process_subtask.delay(subtask.id)

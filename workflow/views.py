@@ -478,31 +478,24 @@ class GenerateTaskView(APIView):
 
     def put(self, request, workflow_id, *args, **kwargs):
         try:
-            workflow = Workflows.objects.get(id=workflow_id)
+            workflow = Workflows.objects.get(workflow_id=workflow_id)
         except Workflows.DoesNotExist:
             return JsonResponse({"error": "Workflow not found"}, status=404)
 
-        data = request.data
-        total_items = data.get("number", 0)
-        batch_size = getattr(settings, "MAX_BATCH_SIZE", 10)
+        task = Task.objects.create(
+            name=f"Batch Task for Workflow {workflow_id}",
+            status="Starting",
+            workflow=workflow,
+        )
 
-        number_of_tasks = (total_items + batch_size - 1) // batch_size
+        batch_size = int(getattr(settings, "MAX_BATCH_SIZE", 10))
 
-        task_ids = []
-        for _ in range(number_of_tasks):
-            task = Task.objects.create(
-                name=f"Batch Task for Workflow {workflow_id}",
-                status="Starting",
-                workflow=workflow,
-                total_items=total_items,
-            )
-            task_ids.append(task.id)
+        number_of_subtasks = workflow.total_examples // batch_size + 1
 
-        # Dispatch subtasks (tasks can now be processed by their ID)
-        create_and_dispatch_subtasks(task_ids, workflow_id, total_items)
+        create_and_dispatch_subtasks(task.id, workflow_id, number_of_subtasks)
 
         return JsonResponse(
-            {"message": "Tasks creation initiated", "task_ids": task_ids}, status=202
+            {"message": "Tasks creation initiated", "task_id": task.id}, status=202
         )
 
 

@@ -155,9 +155,8 @@ class Task(models.Model):
         Dataset, on_delete=models.SET_NULL, null=True, blank=True, related_name="tasks"
     )
     temp_data = models.TextField(blank=True, null=True)
-    total_number = models.IntegerField(default=1)
-    workflow = models.OneToOneField(
-        "Workflows", on_delete=models.CASCADE, related_name="task"
+    workflow = models.ForeignKey(
+        "Workflows", on_delete=models.CASCADE, related_name="tasks"
     )
 
     def set_temp_data(self, data):
