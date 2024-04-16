@@ -25,27 +25,29 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv('SECRET_KEY')
+SECRET_KEY = os.getenv("SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DEBUG')
+DEBUG = os.getenv("DEBUG")
 
 # ALLOWED_HOSTS = []
 
 # Open AI key
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # Number of examples to generate in each iteration
-LLM_GENERATION_NUM_SAMPLES = os.getenv('LLM_GENERATION_NUM_SAMPLES')
+LLM_GENERATION_NUM_SAMPLES = os.getenv("LLM_GENERATION_NUM_SAMPLES")
 
 # Size for batching tasks
-MAX_BATCH_SIZE=os.getenv('MAX_BATCH_SIZE')
+MAX_BATCH_SIZE = os.getenv("MAX_BATCH_SIZE")
 
 # Celery task retries
-CELERY_MAX_RETRIES = os.getenv('CELERY_MAX_RETRIES')
+CELERY_MAX_RETRIES = os.getenv("CELERY_MAX_RETRIES")
 
 # HuggingFace token
-HUGGING_FACE_TOKEN = os.getenv('HUGGING_FACE_TOKEN')
+HUGGING_FACE_TOKEN = os.getenv("HUGGING_FACE_TOKEN")
+
+MAX_CONCURRENT_FETCHES = os.getenv("MAX_CONCURRENT_FETCHES")
 
 # Application definition
 
@@ -58,12 +60,12 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "drf_yasg",
     "rest_framework",
-    "workflow"
+    "workflow",
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
-    'whitenoise.middleware.WhiteNoiseMiddleware',
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -144,10 +146,12 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
 STATIC_URL = "static/"
-STATIC_ROOT = os.path.join(BASE_DIR, '../staticfiles')
+STATIC_ROOT = os.path.join(BASE_DIR, "../staticfiles")
 
 STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, 'staticfiles'),  # Adjust this path if your static files are located elsewhere
+    os.path.join(
+        BASE_DIR, "staticfiles"
+    ),  # Adjust this path if your static files are located elsewhere
 ]
 
 # Default primary key field type
@@ -157,12 +161,12 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
 # Celery Configuration
-CELERY_BROKER_URL = 'redis://localhost:6379/0'
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
-CELERY_ACCEPT_CONTENT = ['json']
-CELERY_TASK_SERIALIZER = 'json'
-CELERY_RESULT_SERIALIZER = 'json'
-CELERY_TIMEZONE = 'UTC'
+CELERY_BROKER_URL = "redis://localhost:6379/0"
+CELERY_RESULT_BACKEND = "redis://localhost:6379/0"
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = "UTC"
 
 CELERY_MAX_RETRIES = 3
 
@@ -170,9 +174,9 @@ CELERY_MAX_RETRIES = 3
 
 
 # Redis Configuration
-REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
-REDIS_PORT = os.getenv('REDIS_PORT', 6379)
-REDIS_DB = os.getenv('REDIS_DB', 1)
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = os.getenv("REDIS_PORT", 6379)
+REDIS_DB = os.getenv("REDIS_DB", 1)
 
 
 CACHES = {
@@ -191,27 +195,23 @@ ALLOWED_HOSTS = ["*"]
 CORS_ALLOWED_ORIGINS = ["http://localhost:8000", "http://127.0.0.1:8000"]
 
 CORS_ORIGIN_WHITELIST = (
-
-    'localhost:8000',
-    'localhost',
+    "localhost:8000",
+    "localhost",
 )
 
-CSRF_TRUSTED_ORIGINS = ['http://localhost:8000']
+CSRF_TRUSTED_ORIGINS = ["http://localhost:8000"]
+
 
 LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'handlers': {
-        'console': {
-            'level': 'DEBUG',
-            'class': 'logging.StreamHandler',
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
         },
     },
-    'loggers': {
-        '': { 
-            'handlers': ['console'],
-            'level': 'DEBUG',
-            'propagate': True,
-        },
+    "root": {
+        "handlers": ["console"],
+        "level": "INFO",
     },
 }

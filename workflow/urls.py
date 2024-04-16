@@ -3,7 +3,6 @@ from rest_framework.routers import DefaultRouter
 
 from . import views
 from .views import (
-    GenerateTaskView,
     TaskProgressView,
     WorkflowDetailView,
     WorkflowDuplicateView,
@@ -33,9 +32,7 @@ urlpatterns = [
     ),
     path("q/", WorkflowSearchView.as_view(), name="search-workflow"),
     path("status/<workflow_id>/", WorkflowStatusView.as_view(), name="workflow-status"),
-    path(
-        "generate/<uuid:workflow_id>/", GenerateTaskView.as_view(), name="generate-task"
-    ),
+    path("generate/<uuid:workflow_id>/", views.generate_task, name="generate-task"),
     path(
         "progress/<uuid:workflow_id>/", TaskProgressView.as_view(), name="task-progress"
     ),

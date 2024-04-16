@@ -1,7 +1,7 @@
-import json
 import logging
+import threading
 
-from asgiref.sync import sync_to_async
+from asgiref.sync import async_to_sync, sync_to_async
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
@@ -14,9 +14,6 @@ from rest_framework.generics import ListAPIView, RetrieveAPIView, UpdateAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from autotune.redis import redis_conn
-
-from .celery_task import create_and_dispatch_subtasks
 from .models import Examples, Task, WorkflowConfig, Workflows
 from .serializers import (
     PromptSerializer,
@@ -24,13 +21,13 @@ from .serializers import (
     WorkflowConfigSerializer,
     WorkflowSerializer,
 )
-from .task import generate_or_refine
+from .task import DataFetcher
 from .utils import dehydrate_cache
 
 logger = logging.getLogger(__name__)
 
 
-def index(request):
+def index():
     return HttpResponse("Hello, world. You're at the workflow index.")
 
 
@@ -184,7 +181,13 @@ def iterate_workflow(request, workflow_id):
                 example.label = label
                 example.reason = reason
                 example.save()
-    response = generate_or_refine(workflow, refine=examples_exist)
+    response = DataFetcher.generate_or_refine(
+        workflow_id=workflow.workflow_id,
+        total_examples=workflow.total_examples,
+        workflow_type=workflow.workflow_type,
+        llm_model=workflow.llm_model,
+        refine=examples_exist,
+    )
     return Response(response)
 
 
@@ -454,49 +457,33 @@ class TaskProgressView(APIView):
             return JsonResponse({"error": str(e)}, status=500)
 
 
-class GenerateTaskView(APIView):
-    """
-    Create tasks for a given workflow and dispatch them for processing.
+@api_view(["PUT"])
+def generate_task(request, workflow_id, *args, **kwargs):
+    try:
+        workflow = Workflows.objects.get(workflow_id=workflow_id)
+    except Workflows.DoesNotExist:
+        return JsonResponse({"error": "Workflow not found"}, status=404)
+    task = Task.objects.create(
+        name=f"Batch Task for Workflow {workflow_id}",
+        status="Starting",
+        workflow=workflow,
+    )
 
-    PUT /generate/<workflow_id>/
+    DataFetcher.generate_or_refine(
+        workflow_id=workflow_id,
+        total_examples=workflow.total_examples,
+        workflow_type=workflow.workflow_type,
+        llm_model=workflow.llm_model,
+        refine=False,
+        task_id=task.id,
+        iteration=0,
+        batch=0,
+        generated=0,
+    )
 
-    Path Parameters:
-    - workflow_id (UUID): The unique identifier of the workflow for which to create and dispatch tasks.
-
-    Request Body:
-    - number (int): The number of tasks to create and dispatch.
-
-    Responses:
-    - 202 Accepted: Tasks creation and dispatch initiated successfully.
-      {
-          "message": "Tasks creation initiated",
-          "task_ids": ["some-task-id1", "some-task-id2", ...]  # List of IDs of created tasks
-      }
-    - 404 Not Found: The specified workflow does not exist.
-    - 500 Internal Server Error: A server error occurred.
-    """
-
-    def put(self, request, workflow_id, *args, **kwargs):
-        try:
-            workflow = Workflows.objects.get(workflow_id=workflow_id)
-        except Workflows.DoesNotExist:
-            return JsonResponse({"error": "Workflow not found"}, status=404)
-
-        task = Task.objects.create(
-            name=f"Batch Task for Workflow {workflow_id}",
-            status="Starting",
-            workflow=workflow,
-        )
-
-        batch_size = int(getattr(settings, "MAX_BATCH_SIZE", 10))
-
-        number_of_subtasks = workflow.total_examples // batch_size + 1
-
-        create_and_dispatch_subtasks(task.id, workflow_id, number_of_subtasks)
-
-        return JsonResponse(
-            {"message": "Tasks creation initiated", "task_id": task.id}, status=202
-        )
+    return JsonResponse(
+        {"message": "Tasks creation initiated", "task_id": task.id}, status=202
+    )
 
 
 @api_view(["GET"])

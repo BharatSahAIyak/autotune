@@ -125,6 +125,7 @@ class Examples(models.Model):
     text = models.JSONField(default=dict)
     label = models.CharField(max_length=255)
     reason = models.TextField(max_length=255)
+    task_id = models.UUIDField(null=True, blank=True)
 
 
 class Prompt(models.Model):
