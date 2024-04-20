@@ -35,62 +35,86 @@ class DataFetcher:
         refine=False,
         task_id=None,
         iteration=None,
-        batch=None,
     ):
+        if iteration is not None and iteration > max_iterations:
+            logger.error("Max iterations reached")
+            return
         user_prompt = self.construct_user_prompt(workflow_id, refine)
         config = get_object_or_404(WorkflowConfig, name=workflow_type)
         if task_id is not None:
-            total_batches = max(
-                1,
-                (total_examples - self.generated + batch_size - 1) // batch_size,
-            )
-
-            greenlets = [
-                spawn(
-                    self.call_llm_generate,
-                    user_prompt,
-                    workflow_type,
-                    llm_model,
-                    iteration,
-                    batch_index,
+            try:
+                total_batches = max(
+                    1,
+                    (total_examples - self.generated + batch_size - 1) // batch_size,
                 )
-                for batch_index in range(total_batches)
-            ]
 
-            joinall(greenlets)
+                greenlets = [
+                    spawn(
+                        self.call_llm_generate,
+                        user_prompt,
+                        workflow_type,
+                        llm_model,
+                        iteration,
+                        batch_index,
+                    )
+                    for batch_index in range(total_batches)
+                ]
 
-            responses = [g.value for g in greenlets]
+                joinall(greenlets)
 
-            for response in responses:
-                if response:
-                    cleaned_data = response.strip("`json \n")
-                    parsed_response = json.loads(cleaned_data)
-                    self.validate_json(parsed_response, config.json_schema)
-                    if parsed_response:
-                        self.generated += self.parse_and_save_examples(
-                            workflow_id, parsed_response
-                        )
+                responses = [g.value for g in greenlets]
 
-            if self.generated < total_examples and iteration < max_iterations:
+                for response in responses:
+                    if response:
+                        cleaned_data = response.strip("`json \n")
+                        parsed_response = json.loads(cleaned_data)
+                        self.validate_json(parsed_response, config.json_schema)
+                        if parsed_response:
+                            self.generated += self.parse_and_save_examples(
+                                workflow_id, parsed_response
+                            )
+
+                if self.generated < total_examples and iteration < max_iterations:
+                    self.generate_or_refine(
+                        workflow_id=workflow_id,
+                        total_examples=total_examples,
+                        workflow_type=workflow_type,
+                        llm_model=llm_model,
+                        refine=refine,
+                        task_id=task_id,
+                        iteration=iteration + 1,
+                        batch=0,
+                    )
+            except Exception as e:
+                print(f"Error generating examples: {str(e)}")
                 self.generate_or_refine(
                     workflow_id=workflow_id,
                     total_examples=total_examples,
                     workflow_type=workflow_type,
                     llm_model=llm_model,
-                    refine=refine,
+                    refine=True,
                     task_id=task_id,
                     iteration=iteration + 1,
-                    batch=0,
                 )
-
         else:
-            response = self.call_llm_generate(user_prompt, workflow_type, llm_model)
-            if response:
-                cleaned_data = response.strip("`json \n")
-                parsed_response = json.loads(cleaned_data)
-                self.validate_json(parsed_response, config.json_schema)
-                self.parse_and_save_examples(workflow_id, parsed_response)
-                return parsed_response
+            try:
+                response = self.call_llm_generate(user_prompt, workflow_type, llm_model)
+                if response:
+                    cleaned_data = response.strip("`json \n")
+                    parsed_response = json.loads(cleaned_data)
+                    self.validate_json(parsed_response, config.json_schema)
+                    self.parse_and_save_examples(workflow_id, parsed_response)
+                    return parsed_response
+            except Exception as e:
+                print(f"Error generating examples: {str(e)}")
+                # self.generate_or_refine(
+                #     workflow_id=workflow_id,
+                #     total_examples=total_examples,
+                #     workflow_type=workflow_type,
+                #     llm_model=llm_model,
+                #     refine=refine,
+                # )
+                return str(e)
 
     def construct_user_prompt(self, workflow_id, refine=False):
         """

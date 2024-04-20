@@ -27,7 +27,6 @@ def process_task(self, task_id):
         refine=True,
         task_id=task_id,
         iteration=1,
-        batch=1,
     )
 
 
