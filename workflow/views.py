@@ -1,8 +1,5 @@
 import logging
-import threading
 
-from asgiref.sync import async_to_sync, sync_to_async
-from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
@@ -14,6 +11,7 @@ from rest_framework.generics import ListAPIView, RetrieveAPIView, UpdateAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .celery_task import process_task
 from .models import Examples, Task, WorkflowConfig, Workflows
 from .serializers import (
     PromptSerializer,
@@ -181,7 +179,9 @@ def iterate_workflow(request, workflow_id):
                 example.label = label
                 example.reason = reason
                 example.save()
-    response = DataFetcher.generate_or_refine(
+
+    fetcher = DataFetcher()
+    response = fetcher.generate_or_refine(
         workflow_id=workflow.workflow_id,
         total_examples=workflow.total_examples,
         workflow_type=workflow.workflow_type,
@@ -469,17 +469,7 @@ def generate_task(request, workflow_id, *args, **kwargs):
         workflow=workflow,
     )
 
-    DataFetcher.generate_or_refine(
-        workflow_id=workflow_id,
-        total_examples=workflow.total_examples,
-        workflow_type=workflow.workflow_type,
-        llm_model=workflow.llm_model,
-        refine=False,
-        task_id=task.id,
-        iteration=0,
-        batch=0,
-        generated=0,
-    )
+    process_task.delay(task.id)
 
     return JsonResponse(
         {"message": "Tasks creation initiated", "task_id": task.id}, status=202

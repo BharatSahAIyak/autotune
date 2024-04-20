@@ -1,10 +1,10 @@
-import asyncio
 import json
 import logging
 import traceback
 
 from django.conf import settings
 from django.shortcuts import get_object_or_404
+from gevent import joinall, spawn
 from jsonschema.exceptions import ValidationError
 from jsonschema.validators import validate
 from langchain.schema.messages import HumanMessage, SystemMessage
@@ -23,8 +23,8 @@ max_iterations = int(getattr(settings, "MAX_ITERATIONS", 100))
 
 
 class DataFetcher:
-    def __init__(self, generated) -> None:
-        self.semaphore = asyncio.Semaphore(settings.MAX_CONCURRENT_FETCHES)
+    def __init__(self) -> None:
+        self.generated = 0
 
     def generate_or_refine(
         self,
@@ -36,43 +36,42 @@ class DataFetcher:
         task_id=None,
         iteration=None,
         batch=None,
-        generated=0,
     ):
         user_prompt = self.construct_user_prompt(workflow_id, refine)
+        config = get_object_or_404(WorkflowConfig, name=workflow_type)
         if task_id is not None:
             total_batches = max(
                 1,
-                (total_examples - generated + batch_size - 1) // batch_size,
+                (total_examples - self.generated + batch_size - 1) // batch_size,
             )
 
-            responses = asyncio.gather(
-                *[
-                    self.call_llm_generate(
-                        workflow_id,
-                        user_prompt,
-                        workflow_type,
-                        llm_model,
-                        iteration,
-                        batch_index,
-                    )
-                    for batch_index in range(total_batches)
-                ]
-            )
+            greenlets = [
+                spawn(
+                    self.call_llm_generate,
+                    user_prompt,
+                    workflow_type,
+                    llm_model,
+                    iteration,
+                    batch_index,
+                )
+                for batch_index in range(total_batches)
+            ]
 
-            config = get_object_or_404(WorkflowConfig, name=workflow_type)
+            joinall(greenlets)
+
+            responses = [g.value for g in greenlets]
 
             for response in responses:
                 if response:
-                    cleaned_data = parsed_response.strip("`json \n")
+                    cleaned_data = response.strip("`json \n")
                     parsed_response = json.loads(cleaned_data)
-                    print(parsed_response)
                     self.validate_json(parsed_response, config.json_schema)
                     if parsed_response:
-                        self.parse_and_save_examples(workflow_id, parsed_response)
-                    print(f"got {response} examples for a batch")
-                    generated += len(response)
+                        self.generated += self.parse_and_save_examples(
+                            workflow_id, parsed_response
+                        )
 
-            if generated < total_examples and iteration < max_iterations:
+            if self.generated < total_examples and iteration < max_iterations:
                 self.generate_or_refine(
                     workflow_id=workflow_id,
                     total_examples=total_examples,
@@ -82,14 +81,16 @@ class DataFetcher:
                     task_id=task_id,
                     iteration=iteration + 1,
                     batch=0,
-                    generated=generated,
                 )
 
         else:
             response = self.call_llm_generate(user_prompt, workflow_type, llm_model)
             if response:
-                self.parse_and_save_examples(workflow_id, response)
-            return response
+                cleaned_data = response.strip("`json \n")
+                parsed_response = json.loads(cleaned_data)
+                self.validate_json(parsed_response, config.json_schema)
+                self.parse_and_save_examples(workflow_id, parsed_response)
+                return parsed_response
 
     def construct_user_prompt(self, workflow_id, refine=False):
         """
@@ -166,6 +167,7 @@ class DataFetcher:
         workflow = Workflows.objects.get(workflow_id=workflow_id)
         try:
             qa_response = QAResponse.parse_obj({"qa_pairs": response})
+            num_pairs = len(qa_response.qa_pairs)
             for qa_pair in qa_response.qa_pairs:
                 Examples.objects.create(
                     workflow=workflow,
@@ -173,6 +175,8 @@ class DataFetcher:
                         {"question": qa_pair.question, "answer": qa_pair.answer}
                     ),
                 )
+            logger.info(f"generated {num_pairs} examples")
+            return num_pairs
         except Exception as e:
             print(f"Error parsing response: {str(e)}")
             raise

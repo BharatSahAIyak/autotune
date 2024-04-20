@@ -4,9 +4,9 @@ from celery import shared_task
 from django.conf import settings
 
 from .models import Task
+from .task import DataFetcher
 
 logger = logging.getLogger(__name__)
-
 
 batch_size = int(getattr(settings, "MAX_BATCH_SIZE", 10))
 max_iterations = int(getattr(settings, "MAX_ITERATIONS", 100))
@@ -18,6 +18,17 @@ def process_task(self, task_id):
     workflow = task.workflow
     task.status = "Processing"
     task.save()
+    fetcher = DataFetcher()
+    fetcher.generate_or_refine(
+        workflow_id=workflow.workflow_id,
+        total_examples=workflow.total_examples,
+        workflow_type=workflow.workflow_type,
+        llm_model=workflow.llm_model,
+        refine=True,
+        task_id=task_id,
+        iteration=1,
+        batch=1,
+    )
 
 
 # def check_and_update_main_task(main_task_id):
