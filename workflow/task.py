@@ -122,6 +122,8 @@ class DataFetcher:
             user_prompt, workflow_type, llm_model, iteration, batch_index
         )
 
+        logger.info("response received from LLM")
+
         if response:
             cleaned_data = response.strip("`json \n")
             parsed_response = json.loads(cleaned_data)
