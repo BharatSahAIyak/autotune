@@ -1,4 +1,6 @@
+from jsonschema import Validator
 from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
 
 from .models import Dataset, Examples, MLModel, Prompt, User, WorkflowConfig, Workflows
 
@@ -65,6 +67,7 @@ class WorkflowSerializer(serializers.ModelSerializer):
     class Meta:
         model = Workflows
         fields = (
+            "workflow_id",
             "workflow_name",
             "total_examples",
             "split",
@@ -97,3 +100,12 @@ class WorkflowConfigSerializer(serializers.ModelSerializer):
             "json_schema",
             "parameters",
         )
+
+    def validate_json_schema(self, value):
+        print(value)
+        try:
+            Validator.check_schema(value)
+        except Exception as e:
+            raise serializers.ValidationError(f"Invalid JSON schema: {str(e)}")
+
+        return value

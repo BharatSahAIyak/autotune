@@ -534,10 +534,3 @@ def add_user(request):
 def train(request):
     # TBD
     return JsonResponse({"message": "hey"})
-
-
-# what is task table
-# how to send prompt to llm on iteration
-# what is model and llm model in workflow
-# data.py for langchain
-# should prompt created with workflow or independent too. or maybe update separately?
