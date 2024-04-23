@@ -1,0 +1,59 @@
+- Entities
+    - Workflow
+        - Name
+        - Cost
+        - [Tag]
+        - Total examples to be generated
+        - Dataset Size
+            - Split (80/20)
+        - [Example]
+            - Text
+            - Valid/Invalid
+            - Reason
+        - TaskType
+            - Type - Seq2Seq Classification, ... [See sample config here](https://github.com/helixml/helix/blob/main/api/pkg/dataprep/qapairs/qapair_config.yaml)
+            - Text - "Prompt"
+                - <Part1>
+                - <Part2>
+                - <Part3>
+            - Output Definition - "JSONSchema"
+            - Output Parser (sequential) - keep it as an array
+                - (Pydantic)
+                - Custom => Inject code (Guardrails)
+        - Model (gpt-3.5, gpt-4)
+        - [Iteration]
+            - Output (text)
+            - [Generated Example]
+            - [Modified Example from user input]
+        -     
+    - User
+        - Workflow
+        - Dataset
+        - Model
+        - Settings
+            - HuggingfaceID
+            - HuggingfaceAPIKey
+            - OpenAIKey
+    - Dataset
+        - id (localID)
+        - huggingfaceID
+        - uploaded (true/false)
+        - latest commit id
+        - locallyCacheID (minio) //delete cache by huggingface
+    - Model
+        - id (localID)
+        - huggingfaceID
+        - uploaded (true/false)
+        - latest commit id
+- Common/Static Fields
+    - updatedAt
+    - createdAt
+- Training Task
+- Logging - CRUD for all entitites, 
+    - task
+    - taskType
+    - startedAt
+    - endAt
+    - [steps]
+
+LLM Output Text => Find the relevant block (parser) => Align with your schema

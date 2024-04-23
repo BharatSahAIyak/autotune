@@ -6,7 +6,7 @@ import coloredlogs
 
 # from utils import get_data
 import utils
-from models.data import GenerationAndCommitRequest
+from models.data import GenerationAndCommitRequest, QuestionCreationRequest
 
 logger = logging.getLogger(
     __name__
@@ -20,7 +20,14 @@ logger.propagate = False
 class DataFetcher:
     MAX_CONCURRENT_FETCHES = 10
 
-    def __init__(self, req: GenerationAndCommitRequest, openai_key, redis, task_id):
+    def __init__(
+        self,
+        req: GenerationAndCommitRequest | QuestionCreationRequest,
+        openai_key,
+        redis,
+        task_id,
+        questions=False,
+    ):
         """
         Initial state is either through Redis (if older progress is available) or create a new task.
 
@@ -50,6 +57,7 @@ class DataFetcher:
         self.semaphore = asyncio.Semaphore(self.MAX_CONCURRENT_FETCHES)
         self.status = None
         self.iteration = 0
+        self.questions = questions
 
     async def _initialize_from_redis(self):
         existing_data = await self.redis.hgetall(self.task_id)
@@ -64,16 +72,23 @@ class DataFetcher:
     async def _fetch_and_update(self, batch_index):
         async with self.semaphore:  # Acquire the semaphore
             try:
-                res = await utils.get_data(
-                    self.req.prompt,
-                    self.openai_key,
-                    self.req.task,
-                    self.req.labels,
-                    self.req.num_samples if self.req.num_samples < 20 else 20,
-                    self.req.num_labels,
-                    self.req.valid_data,
-                    self.req.invalid_data,
-                )
+                if self.questions:
+                    res = await utils.get_question(
+                        self.openai_key,
+                        self.req.num_samples if self.req.num_samples < 20 else 20,
+                        self.req.content,
+                        self.req.model,
+                        self.req.system_prompt,
+                        self.req.user_prompt,
+                    )
+                else:
+                    res = await utils.get_data(
+                        self.openai_key,
+                        self.req.labels,
+                        self.req.num_samples if self.req.num_samples < 20 else 20,
+                        self.req.valid_data,
+                        self.req.invalid_data,
+                    )
                 self.data["data"].extend(res)
 
                 progress = min(100, len(self.data["data"]) / self.req.num_samples * 100)
@@ -84,6 +99,9 @@ class DataFetcher:
                     "Detail": "Generating data (Batch %s)" % batch_index,
                     "data": json.dumps(self.data),
                 }
+
+                if self.questions:
+                    self.status["content_row"] = self.req.index
 
                 await self.redis.hset(
                     self.task_id,

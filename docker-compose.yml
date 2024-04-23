@@ -1,0 +1,24 @@
+version: "3.6"
+services:
+  app:
+    container_name: autotune-app
+    image: autotune:latest
+    build: .
+    networks:
+      - communication
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: always
+    env_file:
+      - ./.env
+
+networks:
+  communication:
+    name: communication
+    external: true
