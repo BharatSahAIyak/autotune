@@ -99,7 +99,17 @@ class DataFetcher:
                     examples = self.parse_and_save_examples(
                         workflow_id, parsed_response
                     )
+                    print(f"got examples \n{examples}")
                     return examples
+                else:
+                    self.generate_or_refine(
+                        workflow_id=workflow_id,
+                        total_examples=total_examples,
+                        workflow_type=workflow_type,
+                        llm_model=llm_model,
+                        refine=refine,
+                        iteration=iteration + 1,
+                    )
             except Exception as e:
                 print(f"Error generating examples: {str(e)}")
                 self.generate_or_refine(
@@ -222,7 +232,7 @@ class DataFetcher:
                     text={"question": qa_pair.question, "answer": qa_pair.answer},
                     task_id=task_id,
                 )
-                examples.append({"id": example.example_id, "text": example.text})
+                examples.append({"id": str(example.example_id), "text": example.text})
             logger.info(f"generated {num_pairs} examples")
             if task_id:
                 return num_pairs

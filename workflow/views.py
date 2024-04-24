@@ -161,26 +161,48 @@ def iterate_workflow(request, workflow_id):
     - A response object with the outcome of the iteration process. The response structure and data depend on the json schema defined in the configfunction.
     """
     workflow = get_object_or_404(Workflows, pk=workflow_id)
-    examples_exist = Examples.objects.filter(
-        workflow_id=workflow_id, label__isnull=False
-    ).exists()
+    examples_data = request.data.get("examples", [])
 
-    if "examples" in request.data:
-        for example_data in request.data["examples"]:
-            text = example_data.get("text")
-            label = example_data.get("label", "")
-            reason = example_data.get("reason", "")
+    examples_exist = (
+        Examples.objects.filter(workflow_id=workflow_id, label__isnull=False).exists()
+        or len(examples_data) > 0
+    )
 
-            example, created = Examples.objects.get_or_create(
-                workflow=workflow,
-                text=text,
-                defaults={"label": label, "reason": reason},
-            )
+    for example_data in examples_data:
+        serializer = ExampleSerializer(data=example_data)
 
-            if not created:
-                example.label = label
-                example.reason = reason
-                example.save()
+        if serializer.is_valid():
+            example_id = serializer.validated_data.get("example_id", None)
+            text = serializer.validated_data["text"]
+            label = serializer.validated_data["label"]
+            reason = serializer.validated_data["reason"]
+
+            if example_id:
+                example, created = Examples.objects.get_or_create(
+                    example_id=example_id,
+                    defaults={
+                        "workflow": workflow,
+                        "text": text,
+                        "label": label,
+                        "reason": reason,
+                    },
+                )
+
+                if not created:
+                    example.text = text
+                    example.label = label
+                    example.reason = reason
+                    example.save()
+            else:
+                Examples.objects.create(
+                    workflow=workflow,
+                    text=text,
+                    label=label,
+                    reason=reason,
+                )
+
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     fetcher = DataFetcher()
     response = fetcher.generate_or_refine(
@@ -191,6 +213,7 @@ def iterate_workflow(request, workflow_id):
         refine=examples_exist,
         iteration=1,
     )
+    print(f"this is the response \n{response}")
     return Response(response)
 
 
