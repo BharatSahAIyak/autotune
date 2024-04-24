@@ -3,7 +3,9 @@ from rest_framework.routers import DefaultRouter
 
 from . import views
 from .views import (
+    PromptViewSet,
     TaskProgressView,
+    WorkflowConfigView,
     WorkflowDetailView,
     WorkflowDuplicateView,
     WorkflowSearchView,
@@ -19,11 +21,10 @@ urlpatterns = [
     path("", views.index, name="index"),
     path("create/", create_workflow_with_prompt, name="create_workflow"),
     path("<uuid:workflow_id>/", WorkflowDetailView.as_view(), name="workflow-detail"),
-    path("prompt/<uuid:workflow_id>/", views.retrieve_prompt, name="retrieve-prompt"),
     path(
         "iterate/<uuid:workflow_id>/", views.iterate_workflow, name="iterate-workflow"
     ),
-    path("prompt/update<uuid:workflow_id>/", views.update_prompt, name="update-prompt"),
+    path("prompt/<uuid:workflow_id>/", PromptViewSet.as_view(), name="prompt"),
     path("update/<workflow_id>", WorkflowUpdateView.as_view(), name="update-workflow"),
     path(
         "duplicate/<workflow_id>/",
@@ -41,9 +42,11 @@ urlpatterns = [
         views.dehydrate_cache_view,
         name="dehydrate-cache",
     ),
-    path("config/create/", views.create_workflow_config, name="create-config"),
     path("user/", views.add_user, name="add-user"),
-    path("config/", views.create_workflow_config, name="create-config"),
-    path("config/<uuid:config_id>", views.update_workflow_config, name="update-config"),
-    # path('', include(router.urls)),
+    path("config/", WorkflowConfigView.as_view(), name="workflow-config-list"),
+    path(
+        "config/<uuid:config_id>/",
+        WorkflowConfigView.as_view(),
+        name="workflow-config-detail",
+    ),
 ]

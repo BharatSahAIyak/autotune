@@ -187,6 +187,7 @@ def iterate_workflow(request, workflow_id):
         workflow_type=workflow.workflow_type,
         llm_model=workflow.llm_model,
         refine=examples_exist,
+        iteration=1,
     )
     return Response(response)
 
@@ -232,75 +233,28 @@ class WorkflowDetailView(RetrieveAPIView):
     lookup_field = "workflow_id"
 
 
-@api_view(["PATCH"])
-def update_prompt(request, workflow_id):
-    """
-    Updates the user prompt or source for a given workflow's prompt.
+class PromptViewSet(APIView):
 
-    Args:
-        request (HttpRequest): HTTP request with the 'user' and/or 'source' fields to update the prompt.
-        workflow_id (int): ID of the workflow whose prompt is to be updated.
+    def get(self, request, workflow_id):
+        workflow = get_object_or_404(Workflows, pk=workflow_id)
+        prompt = workflow.prompt
+        return Response(PromptSerializer(prompt).data)
 
-    Request Payload Example:
-    {
-        "user": "Updated user prompt text.",
-        "source": "Updated source text."
-    }
+    def put(self, request, workflow_id):
+        workflow = get_object_or_404(Workflows, pk=workflow_id)
+        prompt = workflow.prompt
 
-    Returns:
-        - HTTP 200 OK: On successful update with the updated prompt data.
-        - HTTP 404 Not Found: If no workflow with the given ID exists.
+        user_prompt = request.data.get("user")
+        source = request.data.get("source")
 
-    Sample Response Payload:
-        {
-            "created_at": "2024-01-01T00:00:00Z",
-            "updated_at": "2024-01-02T00:00:00Z",
-            "user": "Updated user prompt text.",
-            "source": "Updated source text.",
-            "workflow": 1
-        }
-    """
-    workflow = get_object_or_404(Workflows, pk=workflow_id)
-    prompt = workflow.prompt
+        if user_prompt is not None:
+            prompt.user = user_prompt
 
-    user_prompt = request.data.get("user")
-    source = request.data.get("source")
+        if source is not None:
+            prompt.source = source
 
-    if user_prompt is not None:
-        prompt.user = user_prompt
-
-    if source is not None:
-        prompt.source = source
-
-    prompt.save()
-    return Response(PromptSerializer(prompt).data)
-
-
-@api_view(["GET"])
-def retrieve_prompt(request, workflow_id):
-    """
-    Retrieves the prompt for a given workflow.
-
-    Args:
-        request (HttpRequest): The HTTP request object.
-        workflow_id (int): ID of the workflow whose prompt is to be retrieved.
-
-    Returns:
-        - HTTP 200 OK: With the prompt data.
-        - HTTP 404 Not Found: If no workflow with the given ID exists.
-
-     Sample Response Payload:
-        {
-            "created_at": "2024-01-01T00:00:00Z",
-            "updated_at": "2024-01-02T00:00:00Z",
-            "user": "Updated user prompt text.",
-            "source": "Updated source text.",
-            "workflow": 1
-        }
-    """
-    workflow = get_object_or_404(Workflows, pk=workflow_id)
-    prompt = workflow.prompt
-    return Response(PromptSerializer(prompt).data)
+        prompt.save()
+        return Response(PromptSerializer(prompt).data)
 
 
 class WorkflowUpdateView(UpdateAPIView):
@@ -487,33 +441,56 @@ def dehydrate_cache_view(request, key_pattern):
     )
 
 
-@api_view(["POST"])
-def create_workflow_config(request):
-    serializer = WorkflowConfigSerializer(data=request.data)
+class WorkflowConfigView(APIView):
+    """
+    Class-based view for managing WorkflowConfig.
+    """
 
-    if serializer.is_valid():
-        serializer.save()
-        return Response(
-            {
-                "message": "Workflow config created successfully!",
-                "config": serializer.data,
-            },
-            status=status.HTTP_201_CREATED,
-        )
-    else:
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-@api_view(["PATCH"])
-def update_workflow_config(request, config_id):
-    config = WorkflowConfig.objects.get(id=config_id)
-    serializer = WorkflowConfigSerializer(config, data=request.data, partial=True)
-
-    if serializer.is_valid():
-        serializer.save()
+    def get(self, request):
+        """
+        Retrieve all WorkflowConfig objects.
+        """
+        configs = WorkflowConfig.objects.all()
+        serializer = WorkflowConfigSerializer(configs, many=True)
         return Response(serializer.data)
-    else:
+
+    def post(self, request):
+        """
+        Create a new WorkflowConfig.
+        """
+        serializer = WorkflowConfigSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(
+                {
+                    "message": "Workflow config created successfully!",
+                    "config": serializer.data,
+                },
+                status=status.HTTP_201_CREATED,
+            )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def patch(self, request, config_id):
+        """
+        Update an existing WorkflowConfig based on its ID.
+        """
+        config = get_object_or_404(WorkflowConfig, id=config_id)
+        serializer = WorkflowConfigSerializer(config, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, config_id):
+        """
+        Delete a WorkflowConfig based on its ID.
+        """
+        config = get_object_or_404(WorkflowConfig, id=config_id)
+        config.delete()
+        return Response(
+            {"message": "Workflow config deleted successfully!"},
+            status=status.HTTP_204_NO_CONTENT,
+        )
 
 
 @api_view(["POST"])

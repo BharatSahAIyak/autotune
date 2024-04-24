@@ -94,6 +94,7 @@ class WorkflowConfigSerializer(serializers.ModelSerializer):
     class Meta:
         model = WorkflowConfig
         fields = (
+            "id",
             "name",
             "system_prompt",
             "user_prompt_template",

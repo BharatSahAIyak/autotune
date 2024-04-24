@@ -74,7 +74,6 @@ class DataFetcher:
                         refine=refine,
                         task_id=task_id,
                         iteration=iteration + 1,
-                        batch=0,
                     )
             except Exception as e:
                 print(f"Error generating examples: {str(e)}")
@@ -98,14 +97,14 @@ class DataFetcher:
                     return parsed_response
             except Exception as e:
                 print(f"Error generating examples: {str(e)}")
-                # self.generate_or_refine(
-                #     workflow_id=workflow_id,
-                #     total_examples=total_examples,
-                #     workflow_type=workflow_type,
-                #     llm_model=llm_model,
-                #     refine=refine,
-                # )
-                return str(e)
+                self.generate_or_refine(
+                    workflow_id=workflow_id,
+                    total_examples=total_examples,
+                    workflow_type=workflow_type,
+                    llm_model=llm_model,
+                    refine=refine,
+                    iteration=iteration + 1,
+                )
 
     def request_and_save(
         self,
@@ -145,7 +144,9 @@ class DataFetcher:
         user_prompt_template = config.user_prompt_template
 
         prompt = ""
-        user_prompt = user_prompt_template.replace("{{.UserQuestion}}", user_prompt)
+        user_prompt = user_prompt_template.replace(
+            "{{workflow.user_prompt}}", user_prompt
+        )
 
         if refine:
             examples = workflow.examples.filter(task_id__isnull=True)
