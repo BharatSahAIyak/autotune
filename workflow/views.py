@@ -187,6 +187,7 @@ def iterate_workflow(request, workflow_id):
         workflow_type=workflow.workflow_type,
         llm_model=workflow.llm_model,
         refine=examples_exist,
+        iteration=1,
     )
     return Response(response)
 
