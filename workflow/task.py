@@ -1,6 +1,7 @@
 import json
 import logging
 import traceback
+from typing import List
 
 from django.conf import settings
 from django.shortcuts import get_object_or_404
@@ -88,13 +89,17 @@ class DataFetcher:
                 )
         else:
             try:
-                response = self.call_llm_generate(user_prompt, workflow_type, llm_model)
+                response = self.call_llm_generate(
+                    user_prompt, workflow_type, llm_model, iteration
+                )
                 if response:
                     cleaned_data = response.strip("`json \n")
                     parsed_response = json.loads(cleaned_data)
                     self.validate_json(parsed_response, config.json_schema)
-                    self.parse_and_save_examples(workflow_id, parsed_response)
-                    return parsed_response
+                    examples = self.parse_and_save_examples(
+                        workflow_id, parsed_response
+                    )
+                    return examples
             except Exception as e:
                 print(f"Error generating examples: {str(e)}")
                 self.generate_or_refine(
@@ -149,10 +154,10 @@ class DataFetcher:
         )
 
         if refine:
-            examples = workflow.examples.filter(task_id__isnull=True)
+            examples: List[Examples] = workflow.examples.filter(task_id__isnull=True)
             example_texts = ""
             for example in examples:
-                example_text = json.loads(example.text)
+                example_text = example.text
                 example_texts += f'\n{{"question": "{example_text["question"]}", "answer": "{example_text["answer"]}", "label": "{example.label}", "reason": "{example.reason}"}}'
 
             prompt += f"{user_prompt}\n\nBased on the examples below, refine and generate {num_samples} new examples.\n{example_texts}\n"
@@ -210,16 +215,19 @@ class DataFetcher:
         try:
             qa_response = QAResponse.parse_obj({"qa_pairs": response})
             num_pairs = len(qa_response.qa_pairs)
+            examples = []
             for qa_pair in qa_response.qa_pairs:
-                Examples.objects.create(
+                example = Examples.objects.create(
                     workflow=workflow,
-                    text=json.dumps(
-                        {"question": qa_pair.question, "answer": qa_pair.answer}
-                    ),
+                    text={"question": qa_pair.question, "answer": qa_pair.answer},
                     task_id=task_id,
                 )
+                examples.append({"id": example.example_id, "text": example.text})
             logger.info(f"generated {num_pairs} examples")
-            return num_pairs
+            if task_id:
+                return num_pairs
+            else:
+                return examples
         except Exception as e:
             print(f"Error parsing response: {str(e)}")
             raise

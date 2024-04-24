@@ -40,7 +40,7 @@ class WorkflowDetailSerializer(serializers.ModelSerializer):
     model = MLModelSerializer(read_only=True)
     dataset = DatasetSerializer(read_only=True)
     prompt = PromptSerializer(read_only=True)
-    examples = ExampleSerializer(many=True, read_only=True, source="examples_set")
+    examples = ExampleSerializer(many=True, read_only=True, source="examples")
 
     class Meta:
         model = Workflows
