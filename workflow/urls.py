@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from . import views
 from .views import (
+    ExamplesView,
     PromptViewSet,
     TaskProgressView,
     WorkflowConfigView,
@@ -14,39 +15,55 @@ from .views import (
     create_workflow_with_prompt,
 )
 
-# router = DefaultRouter()
-# router.register(r'prompts', PromptViewSet, basename='prompt')
-
 urlpatterns = [
+    # General routes
     path("", views.index, name="index"),
     path("create/", create_workflow_with_prompt, name="create_workflow"),
+    # Workflow-related routes
     path("<uuid:workflow_id>/", WorkflowDetailView.as_view(), name="workflow-detail"),
     path(
         "iterate/<uuid:workflow_id>/", views.iterate_workflow, name="iterate-workflow"
     ),
     path("prompt/<uuid:workflow_id>/", PromptViewSet.as_view(), name="prompt"),
-    path("update/<workflow_id>", WorkflowUpdateView.as_view(), name="update-workflow"),
     path(
-        "duplicate/<workflow_id>/",
+        "update/<uuid:workflow_id>/",
+        WorkflowUpdateView.as_view(),
+        name="update-workflow",
+    ),
+    path(
+        "duplicate/<uuid:workflow_id>/",
         WorkflowDuplicateView.as_view(),
         name="duplicate-workflow",
     ),
-    path("q/", WorkflowSearchView.as_view(), name="search-workflow"),
-    path("status/<workflow_id>/", WorkflowStatusView.as_view(), name="workflow-status"),
+    path(
+        "status/<uuid:workflow_id>/",
+        WorkflowStatusView.as_view(),
+        name="workflow-status",
+    ),
     path("generate/<uuid:workflow_id>/", views.generate_task, name="generate-task"),
     path(
         "progress/<uuid:workflow_id>/", TaskProgressView.as_view(), name="task-progress"
     ),
+    # Examples routes
+    path("examples/", ExamplesView.as_view(), name="examples"),
     path(
-        "dehydrate-cache/<str:key_pattern>/",
-        views.dehydrate_cache_view,
-        name="dehydrate-cache",
+        "examples/<uuid:workflow_id>/",
+        ExamplesView.as_view(),
+        name="examples-by-workflow",
     ),
-    path("user/", views.add_user, name="add-user"),
+    # Search and config routes
+    path("q/", WorkflowSearchView.as_view(), name="search-workflow"),
     path("config/", WorkflowConfigView.as_view(), name="workflow-config-list"),
     path(
         "config/<uuid:config_id>/",
         WorkflowConfigView.as_view(),
         name="workflow-config-detail",
     ),
+    # Miscellaneous routes
+    path(
+        "dehydrate-cache/<str:key_pattern>/",
+        views.dehydrate_cache_view,
+        name="dehydrate-cache",
+    ),
+    path("user/", views.add_user, name="add-user"),
 ]
