@@ -232,75 +232,28 @@ class WorkflowDetailView(RetrieveAPIView):
     lookup_field = "workflow_id"
 
 
-@api_view(["PATCH"])
-def update_prompt(request, workflow_id):
-    """
-    Updates the user prompt or source for a given workflow's prompt.
+class PromptViewSet(APIView):
 
-    Args:
-        request (HttpRequest): HTTP request with the 'user' and/or 'source' fields to update the prompt.
-        workflow_id (int): ID of the workflow whose prompt is to be updated.
+    def get(self, request, workflow_id):
+        workflow = get_object_or_404(Workflows, pk=workflow_id)
+        prompt = workflow.prompt
+        return Response(PromptSerializer(prompt).data)
 
-    Request Payload Example:
-    {
-        "user": "Updated user prompt text.",
-        "source": "Updated source text."
-    }
+    def put(self, request, workflow_id):
+        workflow = get_object_or_404(Workflows, pk=workflow_id)
+        prompt = workflow.prompt
 
-    Returns:
-        - HTTP 200 OK: On successful update with the updated prompt data.
-        - HTTP 404 Not Found: If no workflow with the given ID exists.
+        user_prompt = request.data.get("user")
+        source = request.data.get("source")
 
-    Sample Response Payload:
-        {
-            "created_at": "2024-01-01T00:00:00Z",
-            "updated_at": "2024-01-02T00:00:00Z",
-            "user": "Updated user prompt text.",
-            "source": "Updated source text.",
-            "workflow": 1
-        }
-    """
-    workflow = get_object_or_404(Workflows, pk=workflow_id)
-    prompt = workflow.prompt
+        if user_prompt is not None:
+            prompt.user = user_prompt
 
-    user_prompt = request.data.get("user")
-    source = request.data.get("source")
+        if source is not None:
+            prompt.source = source
 
-    if user_prompt is not None:
-        prompt.user = user_prompt
-
-    if source is not None:
-        prompt.source = source
-
-    prompt.save()
-    return Response(PromptSerializer(prompt).data)
-
-
-@api_view(["GET"])
-def retrieve_prompt(request, workflow_id):
-    """
-    Retrieves the prompt for a given workflow.
-
-    Args:
-        request (HttpRequest): The HTTP request object.
-        workflow_id (int): ID of the workflow whose prompt is to be retrieved.
-
-    Returns:
-        - HTTP 200 OK: With the prompt data.
-        - HTTP 404 Not Found: If no workflow with the given ID exists.
-
-     Sample Response Payload:
-        {
-            "created_at": "2024-01-01T00:00:00Z",
-            "updated_at": "2024-01-02T00:00:00Z",
-            "user": "Updated user prompt text.",
-            "source": "Updated source text.",
-            "workflow": 1
-        }
-    """
-    workflow = get_object_or_404(Workflows, pk=workflow_id)
-    prompt = workflow.prompt
-    return Response(PromptSerializer(prompt).data)
+        prompt.save()
+        return Response(PromptSerializer(prompt).data)
 
 
 class WorkflowUpdateView(UpdateAPIView):
