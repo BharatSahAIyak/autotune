@@ -21,8 +21,12 @@ max_iterations = int(getattr(settings, "MAX_ITERATIONS", 100))
 def process_task(self, task_id):
     task = Task.objects.get(id=task_id)
     workflow: Workflows = task.workflow
+
+    workflow.status = "GENERATION"
+    workflow.save()
     task.status = "Processing"
     task.save()
+
     fetcher = DataFetcher()
     fetcher.generate_or_refine(
         workflow_id=workflow.workflow_id,
@@ -33,6 +37,9 @@ def process_task(self, task_id):
         task_id=task_id,
         iteration=1,
     )
+
+    workflow.status = "PUSHING_DATASET"
+    workflow.save()
     task.status = "Uploading"
     task.save()
 
@@ -44,6 +51,8 @@ def process_task(self, task_id):
 
     upload_datasets_to_hf(task_id, workflow.split, repo_id)
 
+    workflow.status = "IDLE"
+    workflow.save()
     task.status = "Completed"
     task.save()
 

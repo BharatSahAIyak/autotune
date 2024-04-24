@@ -161,6 +161,8 @@ def iterate_workflow(request, workflow_id):
     - A response object with the outcome of the iteration process. The response structure and data depend on the json schema defined in the configfunction.
     """
     workflow = get_object_or_404(Workflows, pk=workflow_id)
+    workflow.status = "ITERATION"
+    workflow.save()
     examples_data = request.data.get("examples", [])
 
     examples_exist = (
@@ -213,7 +215,8 @@ def iterate_workflow(request, workflow_id):
         refine=examples_exist,
         iteration=1,
     )
-    print(f"this is the response \n{response}")
+    workflow.status = "IDLE"
+    workflow.save()
     return Response(response)
 
 
@@ -439,48 +442,11 @@ class WorkflowSearchView(ListAPIView):
         return Workflows.objects.filter(query)
 
 
-class TaskProgressView(APIView):
-    """
-    Get the progress of tasks associated with a specific workflow.
+class TaskView(APIView):
 
-    GET /progress/<workflow_id>/
-
-    Path Parameters:
-    - workflow_id (UUID): The unique identifier of the workflow to retrieve task progress for.
-
-    Responses:
-    - 200 OK: Returns the progress of tasks for the specified workflow.
-      {
-          "workflow_id": "some-workflow-id",
-          "progress": "75%"
-      }
-    - 404 Not Found: No tasks found for this workflow or the workflow does not exist.
-    - 500 Internal Server Error: A server error occurred.
-    """
-
-    def get(self, request, workflow_id, *args, **kwargs):
-        try:
-            # Filter only main tasks (no parent_task)
-            main_tasks = Task.objects.filter(
-                workflow_id=workflow_id, parent_task__isnull=True
-            )
-            if not main_tasks.exists():
-                return JsonResponse(
-                    {"error": "No tasks found for this workflow"}, status=404
-                )
-
-            total_main_tasks = main_tasks.count()
-            # Assuming 'Completed' status means all subtasks are also completed
-            completed_main_tasks = main_tasks.filter(status="Completed").count()
-
-            progress_percent = (completed_main_tasks / total_main_tasks) * 100
-
-            return JsonResponse(
-                {"workflow_id": workflow_id, "progress": f"{progress_percent}%"},
-                status=200,
-            )
-        except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500)
+    def get(self, request, task_id):
+        task = get_object_or_404(Task, pk=task_id)
+        return Response({"status": task.status})
 
 
 @api_view(["PUT"])
