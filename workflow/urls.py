@@ -5,6 +5,7 @@ from . import views
 from .views import (
     PromptViewSet,
     TaskProgressView,
+    WorkflowConfigView,
     WorkflowDetailView,
     WorkflowDuplicateView,
     WorkflowSearchView,
@@ -41,9 +42,11 @@ urlpatterns = [
         views.dehydrate_cache_view,
         name="dehydrate-cache",
     ),
-    path("config/create/", views.create_workflow_config, name="create-config"),
     path("user/", views.add_user, name="add-user"),
-    path("config/", views.create_workflow_config, name="create-config"),
-    path("config/<uuid:config_id>", views.update_workflow_config, name="update-config"),
-    # path('', include(router.urls)),
+    path("config/", WorkflowConfigView.as_view(), name="workflow-config-list"),
+    path(
+        "config/<uuid:config_id>/",
+        WorkflowConfigView.as_view(),
+        name="workflow-config-detail",
+    ),
 ]

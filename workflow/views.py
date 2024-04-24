@@ -440,33 +440,56 @@ def dehydrate_cache_view(request, key_pattern):
     )
 
 
-@api_view(["POST"])
-def create_workflow_config(request):
-    serializer = WorkflowConfigSerializer(data=request.data)
+class WorkflowConfigView(APIView):
+    """
+    Class-based view for managing WorkflowConfig.
+    """
 
-    if serializer.is_valid():
-        serializer.save()
-        return Response(
-            {
-                "message": "Workflow config created successfully!",
-                "config": serializer.data,
-            },
-            status=status.HTTP_201_CREATED,
-        )
-    else:
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-@api_view(["PATCH"])
-def update_workflow_config(request, config_id):
-    config = WorkflowConfig.objects.get(id=config_id)
-    serializer = WorkflowConfigSerializer(config, data=request.data, partial=True)
-
-    if serializer.is_valid():
-        serializer.save()
+    def get(self, request):
+        """
+        Retrieve all WorkflowConfig objects.
+        """
+        configs = WorkflowConfig.objects.all()
+        serializer = WorkflowConfigSerializer(configs, many=True)
         return Response(serializer.data)
-    else:
+
+    def post(self, request):
+        """
+        Create a new WorkflowConfig.
+        """
+        serializer = WorkflowConfigSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(
+                {
+                    "message": "Workflow config created successfully!",
+                    "config": serializer.data,
+                },
+                status=status.HTTP_201_CREATED,
+            )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def patch(self, request, config_id):
+        """
+        Update an existing WorkflowConfig based on its ID.
+        """
+        config = get_object_or_404(WorkflowConfig, id=config_id)
+        serializer = WorkflowConfigSerializer(config, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, config_id):
+        """
+        Delete a WorkflowConfig based on its ID.
+        """
+        config = get_object_or_404(WorkflowConfig, id=config_id)
+        config.delete()
+        return Response(
+            {"message": "Workflow config deleted successfully!"},
+            status=status.HTTP_204_NO_CONTENT,
+        )
 
 
 @api_view(["POST"])
