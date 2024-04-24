@@ -24,9 +24,11 @@ class DatasetSerializer(serializers.ModelSerializer):
 
 
 class ExampleSerializer(serializers.ModelSerializer):
+    example_id = serializers.UUIDField(required=False)
+
     class Meta:
         model = Examples
-        fields = ("text", "label", "reason")
+        fields = ("example_id", "text", "label", "reason")
 
 
 class PromptSerializer(serializers.ModelSerializer):

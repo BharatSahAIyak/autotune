@@ -7,6 +7,7 @@ from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status
 from rest_framework.decorators import api_view
+from rest_framework.exceptions import ValidationError
 from rest_framework.generics import ListAPIView, RetrieveAPIView, UpdateAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -14,6 +15,7 @@ from rest_framework.views import APIView
 from .celery_task import process_task
 from .models import Examples, Task, WorkflowConfig, Workflows
 from .serializers import (
+    ExampleSerializer,
     PromptSerializer,
     UserSerializer,
     WorkflowConfigSerializer,
@@ -255,6 +257,53 @@ class PromptViewSet(APIView):
 
         prompt.save()
         return Response(PromptSerializer(prompt).data)
+
+
+class ExamplesView(APIView):
+
+    def get(self, request, workflow_id=None):
+        if workflow_id:
+            examples = Examples.objects.filter(
+                workflow_id=workflow_id, task_id__isnull=True
+            )
+        else:
+            examples = Examples.objects.all()
+
+        serialized_examples = ExampleSerializer(examples, many=True)
+        return Response(serialized_examples.data, status=status.HTTP_200_OK)
+
+    def post(self, request, workflow_id):
+        workflow = get_object_or_404(Workflows, pk=workflow_id)
+        examples_data = request.data.get("examples", [])
+
+        for example_data in examples_data:
+            serializer = ExampleSerializer(data=example_data)
+            if serializer.is_valid():
+                example_id = serializer.validated_data.get("example_id")
+
+                if example_id:
+                    try:
+                        example = Examples.objects.get(example_id=example_id)
+                        example.text = serializer.validated_data["text"]
+                        example.label = serializer.validated_data["label"]
+                        example.reason = serializer.validated_data["reason"]
+                        example.save()
+                    except Examples.DoesNotExist:
+                        raise ValidationError(
+                            f"Example with ID {example_id} does not exist."
+                        )
+                else:
+                    Examples.objects.create(
+                        workflow=workflow,
+                        text=serializer.validated_data["text"],
+                        label=serializer.validated_data["label"],
+                        reason=serializer.validated_data["reason"],
+                    )
+
+            else:
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({"message": "Examples updated successfully"}, status=201)
 
 
 class WorkflowUpdateView(UpdateAPIView):

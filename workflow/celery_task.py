@@ -61,9 +61,8 @@ def upload_datasets_to_hf(task_id, split, repo_id):
     examples = Examples.objects.filter(task_id=task_id)
     data = []
     for example in examples:
-        dict = json.loads(example.text)
         pairs = {}
-        for key, value in dict.items():
+        for key, value in example.text.items():
             pairs[key] = value
         data.append(pairs)
 
