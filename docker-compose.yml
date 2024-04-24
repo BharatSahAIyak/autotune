@@ -1,7 +1,6 @@
 services:
   app:
     container_name: autotune-app
-    image: autotune:latest
     build: .
     command: bash -c "python manage.py makemigrations && python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
     # deploy:
@@ -21,21 +20,19 @@ services:
 
   celery_worker:
     container_name: autotune-celery
-    image: autotune:latest
     build: .
     command: celery -A autotune worker --loglevel=info -P gevent
-    networks:
-      - communication
     env_file:
-      - ./.env
+      - .env
     depends_on:
       - redis
+      - postgres
 
   redis:
     image: 'redis:latest'
     container_name: 'redis'
     ports:
-      - '6379:6379'
+      - '${REDIS_PORT}:6379'
     volumes:
       - redis:/data
     restart: always

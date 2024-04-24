@@ -112,7 +112,7 @@ class DataFetcher:
                     )
             except Exception as e:
                 print(f"Error generating examples: {str(e)}")
-                self.generate_or_refine(
+                return self.generate_or_refine(
                     workflow_id=workflow_id,
                     total_examples=total_examples,
                     workflow_type=workflow_type,
