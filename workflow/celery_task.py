@@ -24,6 +24,7 @@ def process_task(self, task_id):
     workflow.status = "GENERATION"
     workflow.save()
     task.status = "Processing"
+    task.total_samples = workflow.total_examples
     task.save()
 
     fetcher = DataFetcher()

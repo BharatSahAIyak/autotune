@@ -13,7 +13,7 @@ from langchain_core.output_parsers import PydanticOutputParser, StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
-from .models import Examples, WorkflowConfig, Workflows
+from .models import Examples, Task, WorkflowConfig, Workflows
 from .pydantic_models import QAPair, QAResponse
 
 logger = logging.getLogger(__name__)
@@ -42,6 +42,7 @@ class DataFetcher:
             return
         user_prompt = self.construct_user_prompt(workflow_id, refine)
         config = get_object_or_404(WorkflowConfig, name=workflow_type)
+        task = get_object_or_404(Task, id=task_id)
         if task_id is not None:
             try:
                 total_batches = max(
@@ -66,6 +67,8 @@ class DataFetcher:
 
                 joinall(greenlets)
 
+                task.generated_samples = self.generated
+                task.save()
                 if self.generated < total_examples and iteration < max_iterations:
                     self.generate_or_refine(
                         workflow_id=workflow_id,

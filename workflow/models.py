@@ -156,6 +156,8 @@ class Task(models.Model):
     workflow = models.ForeignKey(
         "Workflows", on_delete=models.CASCADE, related_name="tasks"
     )
+    generated_samples = models.IntegerField(default=0)
+    total_samples = models.IntegerField(default=0)
 
 
 class Log(models.Model):
