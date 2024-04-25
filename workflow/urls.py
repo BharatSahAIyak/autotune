@@ -5,7 +5,6 @@ from . import views
 from .views import (
     ExamplesView,
     PromptViewSet,
-    TaskProgressView,
     WorkflowConfigView,
     WorkflowDetailView,
     WorkflowDuplicateView,
@@ -41,9 +40,6 @@ urlpatterns = [
         name="workflow-status",
     ),
     path("generate/<uuid:workflow_id>/", views.generate_task, name="generate-task"),
-    path(
-        "progress/<uuid:workflow_id>/", TaskProgressView.as_view(), name="task-progress"
-    ),
     # Examples routes
     path("examples/", ExamplesView.as_view(), name="examples"),
     path(

@@ -99,10 +99,9 @@ class DataFetcher:
                     examples = self.parse_and_save_examples(
                         workflow_id, parsed_response
                     )
-                    print(f"got examples \n{examples}")
                     return examples
                 else:
-                    self.generate_or_refine(
+                    return self.generate_or_refine(
                         workflow_id=workflow_id,
                         total_examples=total_examples,
                         workflow_type=workflow_type,

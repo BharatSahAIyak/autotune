@@ -72,6 +72,7 @@ class Workflows(models.Model):
         TRAINING = "TRAINING", _("Training")
         PUSHING_DATASET = "PUSHING_DATASET", _("Pushing Dataset")
         PUSHING_MODEL = "PUSHING_MODEL", _("Pushing Model")
+        IDLE = "IDLE", _("Idle")
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -149,23 +150,12 @@ class Task(models.Model):
     name = models.CharField(max_length=255)
     format = models.JSONField(default=dict)
     status = models.CharField(max_length=255, default="Starting")
-    parent_task = models.ForeignKey(
-        "self", on_delete=models.CASCADE, null=True, blank=True, related_name="subtasks"
-    )
     dataset = models.ForeignKey(
         Dataset, on_delete=models.SET_NULL, null=True, blank=True, related_name="tasks"
     )
-    temp_data = models.TextField(blank=True, null=True)
     workflow = models.ForeignKey(
         "Workflows", on_delete=models.CASCADE, related_name="tasks"
     )
-
-    def set_temp_data(self, data):
-        self.temp_data = json.dumps(data)
-        self.save()
-
-    def get_temp_data(self):
-        return json.loads(self.temp_data) if self.temp_data else None
 
 
 class Log(models.Model):
