@@ -13,7 +13,6 @@ from .task import DataFetcher
 
 logger = logging.getLogger(__name__)
 
-batch_size = int(getattr(settings, "MAX_BATCH_SIZE", 10))
 max_iterations = int(getattr(settings, "MAX_ITERATIONS", 100))
 
 

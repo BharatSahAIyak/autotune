@@ -2,7 +2,7 @@ services:
   app:
     container_name: autotune-app
     build: .
-    command: bash -c "python manage.py makemigrations && python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+    command: bash -c "poetry install && python manage.py makemigrations && python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
     # deploy:
     #   resources:
     #     reservations:
@@ -21,7 +21,7 @@ services:
   celery_worker:
     container_name: autotune-celery
     build: .
-    command: celery -A autotune worker --loglevel=info -P gevent
+    command: bash -c "poetry install && celery -A autotune worker --loglevel=info -P gevent"
     env_file:
       - .env
     depends_on:
