@@ -43,6 +43,7 @@ langchain-openai="^0.1.0"
 whitenoise="^6.6.0"
 psycopg_binary="^3.1.18"
 gevent="^24.2.1"
+dj_database_url="^1.0.3"
 
 [build-system]
 requires = ["poetry-core"]
