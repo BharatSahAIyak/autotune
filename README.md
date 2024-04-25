@@ -10,24 +10,60 @@ Clone the repo and cd to project root.
 
 ## Environment
 
-1. Create and activate venv. Ex:
-   (on windows)
+This projects works with [Python 3.10](https://www.python.org/downloads/release/python-31011/)
+
+### Create the virtual environment
+
+```bash
+python3.10 -m venv venv
+```
+
+### Activate the virtual environment
+
+- For Linux and MacOS
 
 ```
-python -m venv venv
+source venv/bin/activate
+```
+
+- For Windows
+
+```
 .\venv\Scripts\activate
-pip install -r requirements.txt
 ```
 
-## API
-
-1. Start your docker engine and run a redis image on port 6379.
+### Install all dependancies
 
 ```
-docker run --name autotunenlp-redis -p 6379:6379 -d redis
+pip install poetry
+poetry install
 ```
 
-2. Start celery worker using gevent pool.
+## Local Development
+
+1. Start your docker engine.
+
+2. Copy the sample env and populate the fields
+
+```
+cp sample.env .env
+```
+
+3. Start the redis and postgres containers
+
+```
+docker compose up -d redis postgres
+```
+
+NOTE: activate the virtual environment before starting the django server and celery worker
+
+4. Start the django server in a terminal window.
+
+```
+python manage.py runserver port
+```
+
+5. Start celery worker using gevent pool in another terminal window.
 
 ```
 celery -A autotune worker --loglevel=info -P gevent
@@ -37,12 +73,6 @@ celery -A autotune worker --loglevel=info -P gevent
 
 ```
 celery -A autotune worker --loglevel=info  --pool=solo
-```
-
-3. Specify a port number and start the application.
-
-```
-uvicorn autotune.asgi:application --port PORT_NUMBER --reload
 ```
 
 ## Contributing
