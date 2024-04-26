@@ -43,7 +43,7 @@ def create_workflow_with_prompt(request):
     {
         "workflow": {
             "workflow_name": "Data Analysis Workflow",
-            "workflow_type": "QnA",
+            "workflow_config": "QnA",
             "total_examples": 1000,
             "split": [
                 70,
@@ -210,7 +210,7 @@ def iterate_workflow(request, workflow_id):
     response = fetcher.generate_or_refine(
         workflow_id=workflow.workflow_id,
         total_examples=workflow.total_examples,
-        workflow_type=workflow.workflow_type,
+        workflow_config=workflow.workflow_config,
         llm_model=workflow.llm_model,
         refine=examples_exist,
         iteration=1,

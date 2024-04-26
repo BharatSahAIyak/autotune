@@ -4,19 +4,19 @@ from django.shortcuts import get_object_or_404
 from workflow.models import WorkflowConfig
 
 
-def get_workflow_config(workflow_type):
+def get_workflow_config(workflow_config):
     """
-    Fetches a WorkflowConfig object from the cache or database by workflow_type.
+    Fetches a WorkflowConfig object from the cache or database by workflow_config.
 
-    :param workflow_type: The type of the workflow to fetch the config for.
+    :param workflow_config: The type of the workflow to fetch the config for.
     :return: WorkflowConfig instance
     raises: HTTPError: Http 404 if no workflow config found in db.
     """
-    cache_key = f"workflow_config_{workflow_type}"
+    cache_key = f"workflow_config_{workflow_config}"
     config = cache.get(cache_key)
 
     if config is None:
-        get_object_or_404(WorkflowConfig, name=workflow_type)
+        get_object_or_404(WorkflowConfig, id=workflow_config)
 
     return config
 

@@ -43,6 +43,9 @@ class WorkflowDetailSerializer(serializers.ModelSerializer):
     dataset = DatasetSerializer(read_only=True)
     prompt = PromptSerializer(read_only=True)
     examples = ExampleSerializer(many=True, read_only=True, source="examples")
+    workflow_config = serializers.PrimaryKeyRelatedField(
+        queryset=WorkflowConfig.objects.all()
+    )
 
     class Meta:
         model = Workflows
@@ -59,12 +62,15 @@ class WorkflowDetailSerializer(serializers.ModelSerializer):
             "model",
             "examples",
             "prompt",
-            "workflow_type",
+            "workflow_config",
         )
 
 
 class WorkflowSerializer(serializers.ModelSerializer):
     examples = ExampleSerializer(many=True, required=False)
+    workflow_config = serializers.PrimaryKeyRelatedField(
+        queryset=WorkflowConfig.objects.all()
+    )
 
     class Meta:
         model = Workflows
@@ -78,7 +84,7 @@ class WorkflowSerializer(serializers.ModelSerializer):
             "tags",
             "user",
             "examples",
-            "workflow_type",
+            "workflow_config",
         )
 
     def create(self, validated_data):
@@ -92,7 +98,6 @@ class WorkflowSerializer(serializers.ModelSerializer):
 
 
 class WorkflowConfigSerializer(serializers.ModelSerializer):
-
     class Meta:
         model = WorkflowConfig
         fields = (
@@ -105,7 +110,6 @@ class WorkflowConfigSerializer(serializers.ModelSerializer):
         )
 
     def validate_json_schema(self, value):
-        print(value)
         try:
             Validator.check_schema(value)
         except Exception as e:

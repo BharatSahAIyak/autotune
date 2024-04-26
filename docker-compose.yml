@@ -49,7 +49,7 @@ services:
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
       POSTGRES_DB: ${DATABASE_NAME}
 
-  graphql-engine:
+  hasura:
     image: hasura/graphql-engine:v2.38.0
     ports:
       - '8080:8080'

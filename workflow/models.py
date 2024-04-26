@@ -61,10 +61,22 @@ class Dataset(models.Model):
     is_locally_cached = models.BooleanField(default=False)
 
 
-class Workflows(models.Model):
-    class WorkflowType(models.TextChoices):
-        QNA_EXAMPLE = "QnA", _("QnA Example")
+class WorkflowConfig(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255, unique=True)
+    system_prompt = models.TextField()
+    user_prompt_template = models.TextField()
+    json_schema = models.JSONField(default=dict, blank=True, null=True)
+    parameters = models.JSONField(default=dict, blank=True, null=True)
 
+    def get_json_schema_as_dict(self):
+        return json.loads(self.json_schema)
+
+    def __str__(self):
+        return self.name
+
+
+class Workflows(models.Model):
     class WorkflowStatus(models.TextChoices):
         SETUP = "SETUP", _("Setup")
         ITERATION = "ITERATION", _("Iteration")
@@ -78,10 +90,8 @@ class Workflows(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     workflow_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     workflow_name = models.CharField(max_length=255)
-    workflow_type = models.CharField(
-        max_length=50,
-        choices=WorkflowType.choices,
-        default=WorkflowType.QNA_EXAMPLE,
+    workflow_config = models.ForeignKey(
+        WorkflowConfig, on_delete=models.CASCADE, related_name="workflows"
     )
     tags = ArrayField(models.CharField(max_length=255))
     total_examples = models.IntegerField()
@@ -169,18 +179,3 @@ class Log(models.Model):
     text = models.TextField()
     result = models.TextField()
     latency_ms = models.IntegerField(default=-1)
-
-
-class WorkflowConfig(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    name = models.CharField(max_length=255, unique=True)
-    system_prompt = models.TextField()
-    user_prompt_template = models.TextField()
-    json_schema = models.JSONField(default=dict, blank=True, null=True)
-    parameters = models.JSONField(default=dict, blank=True, null=True)
-
-    def get_json_schema_as_dict(self):
-        return json.loads(self.json_schema)
-
-    def __str__(self):
-        return self.name

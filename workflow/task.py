@@ -31,7 +31,7 @@ class DataFetcher:
         self,
         workflow_id,
         total_examples,
-        workflow_type,
+        workflow_config,
         llm_model,
         refine=False,
         task_id=None,
@@ -41,7 +41,7 @@ class DataFetcher:
             logger.error("Max iterations reached")
             return
         user_prompt = self.construct_user_prompt(workflow_id, refine)
-        config = get_object_or_404(WorkflowConfig, name=workflow_type)
+        config = get_object_or_404(WorkflowConfig, id=workflow_config)
         task = get_object_or_404(Task, id=task_id)
         if task_id is not None:
             try:
@@ -54,7 +54,7 @@ class DataFetcher:
                     spawn(
                         self.request_and_save,
                         user_prompt,
-                        workflow_type,
+                        workflow_config,
                         llm_model,
                         iteration,
                         batch_index,
@@ -73,7 +73,7 @@ class DataFetcher:
                     self.generate_or_refine(
                         workflow_id=workflow_id,
                         total_examples=total_examples,
-                        workflow_type=workflow_type,
+                        workflow_config=workflow_config,
                         llm_model=llm_model,
                         refine=refine,
                         task_id=task_id,
@@ -84,7 +84,7 @@ class DataFetcher:
                 self.generate_or_refine(
                     workflow_id=workflow_id,
                     total_examples=total_examples,
-                    workflow_type=workflow_type,
+                    workflow_config=workflow_config,
                     llm_model=llm_model,
                     refine=True,
                     task_id=task_id,
@@ -93,7 +93,7 @@ class DataFetcher:
         else:
             try:
                 response = self.call_llm_generate(
-                    user_prompt, workflow_type, llm_model, iteration
+                    user_prompt, workflow_config, llm_model, iteration
                 )
                 if response:
                     cleaned_data = response.strip("`json \n")
@@ -107,7 +107,7 @@ class DataFetcher:
                     return self.generate_or_refine(
                         workflow_id=workflow_id,
                         total_examples=total_examples,
-                        workflow_type=workflow_type,
+                        workflow_config=workflow_config,
                         llm_model=llm_model,
                         refine=refine,
                         iteration=iteration + 1,
@@ -117,7 +117,7 @@ class DataFetcher:
                 return self.generate_or_refine(
                     workflow_id=workflow_id,
                     total_examples=total_examples,
-                    workflow_type=workflow_type,
+                    workflow_config=workflow_config,
                     llm_model=llm_model,
                     refine=refine,
                     iteration=iteration + 1,
@@ -126,7 +126,7 @@ class DataFetcher:
     def request_and_save(
         self,
         user_prompt,
-        workflow_type,
+        workflow_config,
         llm_model,
         iteration,
         batch_index,
@@ -135,7 +135,7 @@ class DataFetcher:
         task_id,
     ):
         response = self.call_llm_generate(
-            user_prompt, workflow_type, llm_model, iteration, batch_index
+            user_prompt, workflow_config, llm_model, iteration, batch_index
         )
 
         logger.info("response received from LLM")
@@ -155,7 +155,7 @@ class DataFetcher:
         whether to refine based on existing examples, and the specified number of samples to generate.
         """
         workflow = Workflows.objects.get(workflow_id=workflow_id)
-        config = get_object_or_404(WorkflowConfig, name=workflow.workflow_type)
+        config = get_object_or_404(WorkflowConfig, id=workflow.workflow_config)
         num_samples = int(settings.LLM_GENERATION_NUM_SAMPLES) | 10
         user_prompt = workflow.prompt.user
         user_prompt_template = config.user_prompt_template
@@ -180,10 +180,10 @@ class DataFetcher:
         return prompt
 
     def call_llm_generate(
-        self, user_prompt, workflow_type, llm_model, iteration=None, batch=None
+        self, user_prompt, workflow_config, llm_model, iteration=None, batch=None
     ):
         logger.info(f"Running query for iteration {iteration} and batch {batch}")
-        config = get_object_or_404(WorkflowConfig, name=workflow_type)
+        config = get_object_or_404(WorkflowConfig, id=workflow_config)
         open_ai_key = settings.OPENAI_API_KEY
         parameters = {}
         if config.parameters:
