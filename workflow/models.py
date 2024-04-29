@@ -63,7 +63,7 @@ class Dataset(models.Model):
 
 class WorkflowConfig(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    name = models.CharField(max_length=255, unique=True)
+    name = models.CharField(max_length=255)
     system_prompt = models.TextField()
     user_prompt_template = models.TextField()
     json_schema = models.JSONField(default=dict, blank=True, null=True)

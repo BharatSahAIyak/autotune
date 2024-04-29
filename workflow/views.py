@@ -210,7 +210,7 @@ def iterate_workflow(request, workflow_id):
     response = fetcher.generate_or_refine(
         workflow_id=workflow.workflow_id,
         total_examples=workflow.total_examples,
-        workflow_config=workflow.workflow_config,
+        workflow_config_id=workflow.workflow_config.id,
         llm_model=workflow.llm_model,
         refine=examples_exist,
         iteration=1,

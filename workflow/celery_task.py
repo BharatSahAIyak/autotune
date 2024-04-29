@@ -31,7 +31,7 @@ def process_task(self, task_id):
     fetcher.generate_or_refine(
         workflow_id=workflow.workflow_id,
         total_examples=workflow.total_examples,
-        workflow_config=workflow.workflow_config,
+        workflow_config_id=workflow.workflow_config.id,
         llm_model=workflow.llm_model,
         refine=True,
         task_id=task_id,
