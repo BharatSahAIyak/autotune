@@ -37,7 +37,7 @@ class DataFetcher:
         task_id=None,
         iteration=None,
     ):
-        if iteration is not None and iteration > max_iterations:
+        if iteration is not None and iteration > 50:
             logger.error("Max iterations reached")
             return
         user_prompt = self.construct_user_prompt(workflow_id, refine)
