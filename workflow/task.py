@@ -175,8 +175,11 @@ class DataFetcher:
             example_texts = ""
             for example in examples:
                 example_text = example.text
-                example_texts += f'\n{{"question": "{example_text["question"]}", "answer": "{example_text["answer"]}", "label": "{example.label}", "reason": "{example.reason}"}}'
-
+                dynamic_text = {key: example_text[key] for key in example_text}
+                dynamic_text['label'] = example.label
+                dynamic_text['reason'] = example.reason
+                example_texts += f'\n{json.dumps(dynamic_text,indent=2)}'
+                
             prompt += f"{user_prompt}\n\nBased on the examples below, refine and generate {num_samples} new examples.\n{example_texts}\n"
         else:
             post_text = f"\nPlease generate {num_samples} new examples based on the instructions given above."
@@ -238,6 +241,7 @@ class DataFetcher:
     ):
         workflow = Workflows.objects.get(workflow_id=workflow_id)
         try:
+            logger.info(response)
             response = json.loads(response)
             keys = list(response.keys())
             for key in keys:
