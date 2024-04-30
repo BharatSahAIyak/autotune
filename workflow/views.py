@@ -22,7 +22,7 @@ from .serializers import (
     WorkflowSerializer,
 )
 from .task import DataFetcher
-from .utils import dehydrate_cache
+from .utils import create_pydantic_model, dehydrate_cache
 
 logger = logging.getLogger(__name__)
 
@@ -206,12 +206,14 @@ def iterate_workflow(request, workflow_id):
         else:
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    Model, class_string = create_pydantic_model(workflow.workflow_config.schema_example)
     fetcher = DataFetcher()
     response = fetcher.generate_or_refine(
         workflow_id=workflow.workflow_id,
         total_examples=workflow.total_examples,
         workflow_config_id=workflow.workflow_config.id,
         llm_model=workflow.llm_model,
+        Model=Model,
         refine=examples_exist,
         iteration=1,
     )
@@ -496,7 +498,26 @@ class WorkflowConfigView(APIView):
         """
         Create a new WorkflowConfig.
         """
-        serializer = WorkflowConfigSerializer(data=request.data)
+        if request.data.get("schema_example") is None:
+            return Response(
+                {"message": "Schema Example is required!"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        Model, model_string = create_pydantic_model(request.data.get("schema_example"))
+        field_names = list(Model.__fields__.keys())
+        field_info = list(Model.__fields__.values())
+
+        fields = []
+
+        for i in range(len(field_names)):
+            fields.append({field_names[i]: field_info[i].annotation.__name__})
+
+        data = request.data
+
+        data["model_string"] = model_string
+        data["fields"] = fields
+
+        serializer = WorkflowConfigSerializer(data=data)
         if serializer.is_valid():
             serializer.save()
             return Response(

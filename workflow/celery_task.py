@@ -10,6 +10,7 @@ from huggingface_hub import CommitOperationAdd, HfApi
 
 from .models import Examples, Task, Workflows
 from .task import DataFetcher
+from .utils import create_pydantic_model
 
 logger = logging.getLogger(__name__)
 
@@ -27,12 +28,15 @@ def process_task(self, task_id):
     task.total_samples = workflow.total_examples
     task.save()
 
+    Model, class_string = create_pydantic_model(workflow.workflow_config.schema_example)
+
     fetcher = DataFetcher()
     fetcher.generate_or_refine(
         workflow_id=workflow.workflow_id,
         total_examples=workflow.total_examples,
         workflow_config_id=workflow.workflow_config.id,
         llm_model=workflow.llm_model,
+        Model=Model,
         refine=True,
         task_id=task_id,
         iteration=1,
