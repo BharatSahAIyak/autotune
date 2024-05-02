@@ -41,8 +41,9 @@ class WorkflowDetailSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     model = MLModelSerializer(read_only=True)
     dataset = DatasetSerializer(read_only=True)
-    prompt = PromptSerializer(read_only=True)
-    examples = ExampleSerializer(many=True, read_only=True, source="examples")
+    latest_prompt = PromptSerializer(read_only=True)
+    prompts = PromptSerializer(many=True, read_only=True)
+    examples = ExampleSerializer(many=True, read_only=True)
     workflow_config = serializers.PrimaryKeyRelatedField(
         queryset=WorkflowConfig.objects.all()
     )
@@ -61,7 +62,8 @@ class WorkflowDetailSerializer(serializers.ModelSerializer):
             "dataset",
             "model",
             "examples",
-            "prompt",
+            "latest_prompt",  # Ensures details of the latest prompt are shown
+            "prompts",  # Lists all associated prompts
             "workflow_config",
         )
 
@@ -84,6 +86,7 @@ class WorkflowSerializer(serializers.ModelSerializer):
             "tags",
             "user",
             "examples",
+            "latest_prompt",
             "workflow_config",
         )
 

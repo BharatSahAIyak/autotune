@@ -5,9 +5,10 @@ from . import views
 from .views import (
     ExamplesView,
     PromptViewSet,
+    SingleWorkflowView,
     WorkflowConfigView,
-    WorkflowDetailView,
     WorkflowDuplicateView,
+    WorkflowListView,
     WorkflowSearchView,
     WorkflowStatusView,
     WorkflowUpdateView,
@@ -16,10 +17,14 @@ from .views import (
 
 urlpatterns = [
     # General routes
-    path("", views.index, name="index"),
+    path("", WorkflowListView.as_view(), name="workflow-list"),
     path("create/", create_workflow_with_prompt, name="create_workflow"),
     # Workflow-related routes
-    path("<uuid:workflow_id>/", WorkflowDetailView.as_view(), name="workflow-detail"),
+    path(
+        "<uuid:workflow_id>/",
+        SingleWorkflowView.as_view(),
+        name="workflow-detail",
+    ),
     path(
         "iterate/<uuid:workflow_id>/", views.iterate_workflow, name="iterate-workflow"
     ),
