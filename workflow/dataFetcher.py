@@ -163,7 +163,7 @@ class DataFetcher:
         config = get_object_or_404(WorkflowConfig, id=workflow.workflow_config.id)
         num_samples = int(settings.LLM_GENERATION_NUM_SAMPLES) | 10
         user_prompt_object: Prompt = workflow.latest_prompt
-        user_prompt = user_prompt_object.user
+        user_prompt = user_prompt_object.user_prompt
         user_prompt_template = config.user_prompt_template
 
         prompt = ""

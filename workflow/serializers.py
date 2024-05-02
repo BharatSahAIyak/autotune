@@ -34,7 +34,15 @@ class ExampleSerializer(serializers.ModelSerializer):
 class PromptSerializer(serializers.ModelSerializer):
     class Meta:
         model = Prompt
-        fields = "__all__"
+        fields = (
+            "id",
+            "created_at",
+            "updated_at",
+            "user_prompt",
+            "system_prompt",
+            "source",
+            "workflow",
+        )
 
 
 class WorkflowDetailSerializer(serializers.ModelSerializer):

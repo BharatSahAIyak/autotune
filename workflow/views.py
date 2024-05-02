@@ -109,7 +109,7 @@ def create_workflow_with_prompt(request):
             workflow = workflow_serializer.save()
 
             prompt_data = {
-                "user": request.data.get("user_prompt", ""),
+                "user_prompt": request.data.get("user_prompt", ""),
                 "workflow": workflow.pk,
             }
 
@@ -273,7 +273,7 @@ class PromptViewSet(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         prompt_data = {
-            "user": request.data.get("user_prompt"),
+            "user_prompt": request.data.get("user_prompt"),
             "workflow": workflow.pk,
         }
         serializer = PromptSerializer(data=prompt_data)

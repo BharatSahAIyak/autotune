@@ -140,7 +140,8 @@ class Prompt(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    user = models.TextField(blank=True, null=True)
+    user_prompt = models.TextField()
+    system_prompt = models.TextField(blank=True, null=True)
     source = models.TextField(blank=True, null=True)
     workflow = models.ForeignKey(
         Workflows, on_delete=models.CASCADE, related_name="prompts"
