@@ -109,7 +109,7 @@ class WorkflowConfigSerializer(serializers.ModelSerializer):
             "system_prompt",
             "user_prompt_template",
             "schema_example",
-            "parameters",
+            "temperature",
             "fields",
             "model_string",
         )

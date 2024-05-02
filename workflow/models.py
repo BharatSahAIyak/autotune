@@ -68,7 +68,9 @@ class WorkflowConfig(models.Model):
     system_prompt = models.TextField()
     user_prompt_template = models.TextField()
     schema_example = models.JSONField(default=dict)
-    parameters = models.JSONField(default=dict, blank=True, null=True)
+    temperature = models.IntegerField(
+        default=1, validators=[MinValueValidator(0), MaxValueValidator(2)]
+    )
     fields = models.JSONField(default=dict)
     model_string = models.TextField()
 

@@ -193,9 +193,6 @@ class DataFetcher:
     ):
         logger.info(f"Running query for iteration {iteration} and batch {batch}")
         config = get_object_or_404(WorkflowConfig, id=workflow_config_id)
-        parameters = {}
-        if config.parameters:
-            parameters = config.parameters
 
         system_prompt = config.system_prompt
 
@@ -214,8 +211,7 @@ class DataFetcher:
         ):
             chat_completion = client.chat.completions.create(
                 model=llm_model,
-                max_tokens=parameters.get("max_tokens", 2048),
-                temperature=parameters.get("temperature", 1),
+                temperature=config.temperature,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
@@ -226,8 +222,7 @@ class DataFetcher:
         else:
             chat_completion = client.chat.completions.create(
                 model=llm_model,
-                max_tokens=parameters.get("max_tokens", 2048),
-                temperature=parameters.get("temperature", 1),
+                temperature=config.temperature,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
