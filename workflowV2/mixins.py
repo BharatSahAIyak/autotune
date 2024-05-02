@@ -25,5 +25,5 @@ class UserIDMixin:
             except User.DoesNotExist:
                 return JsonResponse({"error": "User not found."}, status=404)
 
-        request.user = user
+        request.META["user"] = user
         return super().dispatch(request, *args, **kwargs)
