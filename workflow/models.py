@@ -36,6 +36,7 @@ class User(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     huggingface_user_id = models.CharField(max_length=255)
+    is_active = models.BooleanField(default=True)  # for django's authentication
 
 
 class MLModel(models.Model):
