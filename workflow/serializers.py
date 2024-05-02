@@ -89,6 +89,10 @@ class WorkflowSerializer(serializers.ModelSerializer):
             "latest_prompt",
             "workflow_config",
         )
+        extra_kwargs = {
+            "cost": {"default": 0},
+            "estimated_dataset_cost": {"default": "NULL till first iteration"},
+        }
 
     def create(self, validated_data):
         examples_data = validated_data.pop("examples", [])

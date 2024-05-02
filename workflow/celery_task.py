@@ -8,8 +8,8 @@ from celery import shared_task
 from django.conf import settings
 from huggingface_hub import CommitOperationAdd, HfApi
 
+from .dataFetcher import DataFetcher
 from .models import Examples, Task, Workflows
-from .task import DataFetcher
 from .utils import create_pydantic_model
 
 logger = logging.getLogger(__name__)

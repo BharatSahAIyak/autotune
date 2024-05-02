@@ -13,6 +13,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .celery_task import process_task
+from .dataFetcher import DataFetcher
 from .models import Examples, Task, WorkflowConfig, Workflows
 from .serializers import (
     ExampleSerializer,
@@ -22,7 +23,6 @@ from .serializers import (
     WorkflowDetailSerializer,
     WorkflowSerializer,
 )
-from .task import DataFetcher
 from .utils import create_pydantic_model, dehydrate_cache
 
 logger = logging.getLogger(__name__)
