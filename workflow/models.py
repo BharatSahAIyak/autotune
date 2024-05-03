@@ -60,7 +60,9 @@ class Dataset(models.Model):
     huggingface_id = models.CharField(null=True, blank=True)
     uploaded_at = models.DateTimeField(null=True, blank=True)
     is_generated_at_autotune = models.BooleanField(default=False)
-    latest_commit_hash = models.UUIDField(null=True, blank=True)
+    latest_commit_hash = models.CharField(
+        null=True, blank=True
+    )  # not a uuid on huggingface
     name = models.CharField(max_length=255)
     is_locally_cached = models.BooleanField(default=False)
     workflow = models.ForeignKey(

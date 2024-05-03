@@ -9,7 +9,7 @@ from django.conf import settings
 from huggingface_hub import CommitOperationAdd, HfApi
 
 from .dataFetcher import DataFetcher
-from .models import Examples, Task, Workflows
+from .models import Dataset, Examples, Task, Workflows
 from .utils import create_pydantic_model, get_model_cost
 
 logger = logging.getLogger(__name__)
@@ -65,11 +65,19 @@ def process_task(self, task_id):
     repo_name = re.sub(r"\s+", "_", repo_name)
     repo_id = f"{username}/{repo_name}"
 
-    upload_datasets_to_hf(task_id, workflow.split, repo_id)
+    dataset_info = upload_datasets_to_hf(task_id, workflow.split, repo_id)
+    dataset = Dataset.objects.create(
+        huggingface_id=repo_id,
+        uploaded_at=dataset_info["uploaded_at"],
+        latest_commit_hash=dataset_info["latest_commit_hash"],
+        name=workflow.workflow_name,
+        workflow=workflow,
+    )
 
     workflow.status = "IDLE"
     workflow.save()
     task.status = "Completed"
+    task.dataset = dataset
     task.save()
 
 
@@ -105,14 +113,23 @@ def upload_datasets_to_hf(task_id, split, repo_id):
     splits = [train_df, validation_df, test_df]
     split_name = ["train", "validation", "test"]
 
+    uploaded_at = datetime.now()
     for i, split in enumerate(splits):
         csv_data = split.to_csv()
         file_data = csv_data.encode("utf-8")
         operation = CommitOperationAdd(f"{split_name[i]}.csv", file_data)
-        hf_api.create_commit(
+        commit_info = hf_api.create_commit(
             repo_id=repo_id,
             operations=[operation],
             commit_message=f"Adding {split_name[i]} csv file",
             repo_type="dataset",
         )
         logger.info(f"pushed {split_name[i]} csv file")
+
+    latest_commit_hash = commit_info.split("/")[-1]
+
+    return {
+        "repo_url": repo_url,
+        "latest_commit_hash": latest_commit_hash,
+        "uploaded_at": uploaded_at,
+    }

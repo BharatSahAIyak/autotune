@@ -1,13 +1,17 @@
+import io
+
+import pandas as pd
+from django.conf import settings
 from django.db import transaction
-from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
+from huggingface_hub import HfApi
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from workflow.models import User, WorkflowConfig, Workflows
+from workflow.models import Dataset, Task, User, WorkflowConfig, Workflows
 from workflow.serializers import (
     PromptSerializer,
     WorkflowConfigSerializer,
@@ -18,6 +22,7 @@ from workflow.utils import create_pydantic_model
 from workflow.views import generate_task, iterate_workflow
 
 from .mixins import UserIDMixin
+from .utils import minio_client
 
 
 class WorkflowListView(UserIDMixin, APIView):
@@ -166,3 +171,95 @@ class WorkflowGenerateView(UserIDMixin, APIView):
     def post(self, request, workflow_id):
         http_request = request._request
         return generate_task(http_request, workflow_id)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class GetDataView(UserIDMixin, APIView):
+    def post(self, request):
+        data = request.data
+        workflow_id = data.get("workflow_id")
+        task_id = data.get("task_id")
+        try:
+            if workflow_id:
+                workflow = get_object_or_404(Workflows, pk=workflow_id)
+                tasks = Task.objects.filter(workflow=workflow)
+                return Response(
+                    {
+                        "workflow_id": workflow_id,
+                        "data": [
+                            {
+                                "task": {
+                                    "task_id": task.id,
+                                    "links": self.get_dataset_links(task.dataset),
+                                }
+                            }
+                            for task in tasks
+                        ],
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+            elif task_id:
+                task = get_object_or_404(Task, pk=task_id)
+                return Response(
+                    {
+                        "workflow_id": str(task.workflow_id),
+                        "data": [
+                            {
+                                "task": {
+                                    "task_id": task_id,
+                                    "links": self.get_dataset_links(task.dataset),
+                                }
+                            }
+                        ],
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+            else:
+                return Response(
+                    {"error": "Either workflow_id or task_id must be provided"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def get_dataset_links(self, dataset: Dataset):
+        hf_api = HfApi(token=settings.HUGGING_FACE_TOKEN)
+
+        files = ["test.csv", "validation.csv", "train.csv"]
+        dataset_links = {}
+        for file in files:
+            if hf_api.file_exists(
+                repo_id=dataset.huggingface_id,
+                filename=file,
+                repo_type="dataset",
+                revision=dataset.latest_commit_hash,
+            ):
+                file_path = hf_api.hf_hub_download(
+                    repo_id=dataset.huggingface_id,
+                    filename=file,
+                    repo_type="dataset",
+                    revision=dataset.latest_commit_hash,
+                )
+                df = pd.read_csv(file_path)
+                buffer = io.BytesIO()
+                df.to_csv(buffer, index=False)
+                buffer.seek(0)
+                file_name = f"{dataset.huggingface_id.split('/')[1]}/{file}"  # Unique path in the bucket
+                minio_client.put_object(
+                    bucket_name=settings.MINIO_BUCKET_NAME,
+                    object_name=file_name,
+                    data=buffer,
+                    length=buffer.getbuffer().nbytes,
+                    content_type="application/csv",
+                )
+                presigned_url = minio_client.presigned_get_object(
+                    bucket_name=settings.MINIO_BUCKET_NAME,
+                    object_name=file_name,
+                )
+                dataset_links[file.split(".")[0]] = presigned_url
+        return dataset_links
