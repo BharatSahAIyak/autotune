@@ -23,14 +23,6 @@ class DatasetSerializer(serializers.ModelSerializer):
         fields = ("id", "name", "is_locally_cached")
 
 
-class ExampleSerializer(serializers.ModelSerializer):
-    example_id = serializers.UUIDField(required=False)
-
-    class Meta:
-        model = Examples
-        fields = ("example_id", "text", "label", "reason")
-
-
 class PromptSerializer(serializers.ModelSerializer):
     class Meta:
         model = Prompt
@@ -43,6 +35,18 @@ class PromptSerializer(serializers.ModelSerializer):
             "source",
             "workflow",
         )
+
+
+class ExampleSerializer(serializers.ModelSerializer):
+    example_id = serializers.UUIDField(required=False)
+    prompt = PromptSerializer(read_only=True)
+    text = serializers.JSONField(required=True)
+    label = serializers.CharField(required=True)
+    reason = serializers.CharField(required=True)
+
+    class Meta:
+        model = Examples
+        fields = ("example_id", "prompt", "text", "label", "reason")
 
 
 class WorkflowDetailSerializer(serializers.ModelSerializer):

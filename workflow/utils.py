@@ -1,6 +1,7 @@
 import importlib.util
 import inspect
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -10,8 +11,14 @@ from pathlib import Path
 from django.core.cache import cache
 from django.shortcuts import get_object_or_404
 from pydantic import BaseModel
+from pydantic import ValidationError as PydanticValidationError
+from rest_framework import status
+from rest_framework.response import Response
 
-from workflow.models import WorkflowConfig
+from .models import Examples, WorkflowConfig
+from .serializers import ExampleSerializer
+
+logger = logging.getLogger(__name__)
 
 
 def get_workflow_config(workflow_config):
@@ -120,3 +127,61 @@ def get_classes_from_module(path, base_class):
                 class_details += f"  {field_name}: {field_type_name}\n"
 
     return class_details
+
+
+def validate_and_save_examples(examples_data, Model, workflow):
+    examples = []
+    for example_data in examples_data:
+        serializer = ExampleSerializer(data=example_data)
+
+        print(serializer.is_valid())
+
+        if serializer.is_valid():
+            example_id = serializer.validated_data.get("example_id", None)
+            text = serializer.validated_data["text"]
+            label = serializer.validated_data["label"]
+            reason = serializer.validated_data["reason"]
+
+            try:
+                Model(**text)
+            except PydanticValidationError as e:
+                logger.error("huh")
+                return False, {"error": True, "message": e.errors()}
+
+            if example_id:
+                example, created = Examples.objects.get_or_create(
+                    example_id=example_id,
+                    defaults={
+                        "workflow": workflow,
+                        "text": text,
+                        "label": label,
+                        "reason": reason,
+                    },
+                )
+
+                if not created:
+                    example.text = text
+                    example.label = label
+                    example.reason = reason
+                    example.save()
+            else:
+                example = Examples.objects.create(
+                    workflow=workflow,
+                    text=text,
+                    label=label,
+                    reason=reason,
+                )
+
+            examples.append(
+                {
+                    "example_id": str(example.example_id),
+                    "text": example.text,
+                    "label": example.label,
+                    "reason": example.reason,
+                }
+            )
+
+        else:
+            return False, serializer.errors
+
+    return True, examples

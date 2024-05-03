@@ -23,7 +23,7 @@ from .serializers import (
     WorkflowDetailSerializer,
     WorkflowSerializer,
 )
-from .utils import create_pydantic_model, dehydrate_cache
+from .utils import create_pydantic_model, dehydrate_cache, validate_and_save_examples
 
 logger = logging.getLogger(__name__)
 
@@ -171,47 +171,17 @@ def iterate_workflow(request, workflow_id):
         or len(examples_data) > 0
     )
 
-    for example_data in examples_data:
-        serializer = ExampleSerializer(data=example_data)
+    Model, _ = create_pydantic_model(workflow.workflow_config.schema_example)
 
-        if serializer.is_valid():
-            example_id = serializer.validated_data.get("example_id", None)
-            text = serializer.validated_data["text"]
-            label = serializer.validated_data["label"]
-            reason = serializer.validated_data["reason"]
+    success, result = validate_and_save_examples(examples_data, Model, workflow)
 
-            if example_id:
-                example, created = Examples.objects.get_or_create(
-                    example_id=example_id,
-                    defaults={
-                        "workflow": workflow,
-                        "text": text,
-                        "label": label,
-                        "reason": reason,
-                    },
-                )
+    if not success:
+        return result
 
-                if not created:
-                    example.text = text
-                    example.label = label
-                    example.reason = reason
-                    example.save()
-            else:
-                Examples.objects.create(
-                    workflow=workflow,
-                    text=text,
-                    label=label,
-                    reason=reason,
-                )
-
-        else:
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    Model, class_string = create_pydantic_model(workflow.workflow_config.schema_example)
     fetcher = DataFetcher()
-    response = fetcher.generate_or_refine(
+    fetcher.generate_or_refine(
         workflow_id=workflow.workflow_id,
-        total_examples=workflow.total_examples,
+        total_examples=10,
         workflow_config_id=workflow.workflow_config.id,
         llm_model=workflow.llm_model,
         Model=Model,
@@ -220,7 +190,7 @@ def iterate_workflow(request, workflow_id):
     )
     workflow.status = "IDLE"
     workflow.save()
-    return Response(response)
+    return Response(fetcher.examples)
 
 
 class WorkflowListView(APIView):

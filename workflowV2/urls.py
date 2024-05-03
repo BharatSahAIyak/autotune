@@ -1,7 +1,12 @@
 from django.urls import path
 from django.views.decorators.csrf import csrf_exempt
 
-from .views import WorkflowConfigCreateView, WorkflowDetailView, WorkflowListView
+from .views import (
+    WorkflowConfigCreateView,
+    WorkflowDetailView,
+    WorkflowIterateView,
+    WorkflowListView,
+)
 
 urlpatterns = [
     path("", WorkflowListView.as_view(), name="workflow-list-v2"),
@@ -14,5 +19,10 @@ urlpatterns = [
         "create/",
         csrf_exempt(WorkflowConfigCreateView.as_view()),
         name="create_workflow",
+    ),
+    path(
+        "iterate/<uuid:workflow_id>/",
+        WorkflowIterateView.as_view(),
+        name="workflow-iterate",
     ),
 ]
