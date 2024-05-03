@@ -1,24 +1,73 @@
-version: "3.6"
 services:
   app:
     container_name: autotune-app
-    image: autotune:latest
     build: .
-    networks:
-      - communication
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    restart: always
+    command: bash -c "poetry install && python manage.py database && python manage.py runserver"
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    # restart: always
+    env_file: .env
+    ports:
+      - '8000:8000'
+    depends_on:
+      - redis
+      - postgres
+
+  celery_worker:
+    container_name: autotune-celery
+    build: .
+    command: bash -c "poetry install && celery -A autotune worker --loglevel=info -P gevent"
     env_file:
-      - ./.env
+      - .env
+    depends_on:
+      - redis
+      - postgres
+
+  redis:
+    image: 'redis:latest'
+    container_name: 'redis'
+    ports:
+      - '${REDIS_PORT}:6379'
+    volumes:
+      - redis:/data
+    restart: always
+
+  postgres:
+    image: postgres:16.0-alpine
+    restart: always
+    ports:
+      - ${DATABASE_PORT}:5432
+    volumes:
+      - db:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: ${DATABASE_USER}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+      POSTGRES_DB: ${DATABASE_NAME}
+
+  hasura:
+    image: hasura/graphql-engine:v2.38.0
+    ports:
+      - '8080:8080'
+    depends_on:
+      - 'postgres'
+    restart: always
+    environment:
+      HASURA_GRAPHQL_METADATA_DATABASE_URL: postgres://${DATABASE_USER}:${DATABASE_PASSWORD}@postgres:${DATABASE_PORT}/${DATABASE_NAME}
+      HASURA_GRAPHQL_DATABASE_URL: postgres://${DATABASE_USER}:${DATABASE_PASSWORD}@postgres:${DATABASE_PORT}/${DATABASE_NAME}
+      HASURA_GRAPHQL_ENABLE_CONSOLE: 'true'
+      HASURA_GRAPHQL_DEV_MODE: 'true'
+      HASURA_GRAPHQL_ADMIN_SECRET: ${GRAPHQL_ADMIN_SECRET}
+
+volumes:
+  db:
+  redis:
 
 networks:
   communication:
     name: communication
-    external: true
+#    external: true
