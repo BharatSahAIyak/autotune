@@ -14,7 +14,7 @@ from rest_framework.views import APIView
 
 from .celery_task import process_task
 from .dataFetcher import DataFetcher
-from .models import Examples, Task, WorkflowConfig, Workflows
+from .models import Examples, Prompt, Task, WorkflowConfig, Workflows
 from .serializers import (
     ExampleSerializer,
     PromptSerializer,
@@ -176,12 +176,18 @@ def iterate_workflow(request, workflow_id):
     success, result = validate_and_save_examples(examples_data, Model, workflow)
 
     if not success:
-        return result
+        return Response(result, status=status.HTTP_400_BAD_REQUEST)
+
+    user_prompt = request.data.get("user_prompt")
+    if user_prompt:
+        Prompt.objects.create(user_prompt=user_prompt, workflow=workflow)
+
+    total_examples = request.data.get("total_examples", 10)
 
     fetcher = DataFetcher()
     fetcher.generate_or_refine(
         workflow_id=workflow.workflow_id,
-        total_examples=10,
+        total_examples=total_examples,
         workflow_config_id=workflow.workflow_config.id,
         llm_model=workflow.llm_model,
         Model=Model,

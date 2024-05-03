@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
@@ -6,15 +7,15 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from workflow.dataFetcher import DataFetcher
-from workflow.models import Examples, Prompt, User, WorkflowConfig, Workflows
+from workflow.models import User, WorkflowConfig, Workflows
 from workflow.serializers import (
     PromptSerializer,
     WorkflowConfigSerializer,
     WorkflowDetailSerializer,
     WorkflowSerializer,
 )
-from workflow.utils import create_pydantic_model, validate_and_save_examples
+from workflow.utils import create_pydantic_model
+from workflow.views import iterate_workflow
 
 from .mixins import UserIDMixin
 
@@ -156,41 +157,5 @@ class WorkflowConfigCreateView(UserIDMixin, APIView):
 @method_decorator(csrf_exempt, name="dispatch")
 class WorkflowIterateView(UserIDMixin, APIView):
     def post(self, request, workflow_id):
-        workflow = get_object_or_404(Workflows, pk=workflow_id)
-        workflow.status = "ITERATION"
-        workflow.save()
-        examples_data = request.data.get("examples", [])
-
-        examples_exist = (
-            Examples.objects.filter(
-                workflow_id=workflow_id, label__isnull=False
-            ).exists()
-            or len(examples_data) > 0
-        )
-
-        Model, _ = create_pydantic_model(workflow.workflow_config.schema_example)
-
-        success, result = validate_and_save_examples(examples_data, Model, workflow)
-
-        if not success:
-            return Response(result, status=status.HTTP_400_BAD_REQUEST)
-
-        user_prompt = request.data.get("user_prompt")
-        if user_prompt:
-            Prompt.objects.create(user_prompt=user_prompt, workflow=workflow)
-
-        total_examples = request.data.get("total_examples", 10)
-
-        fetcher = DataFetcher()
-        fetcher.generate_or_refine(
-            workflow_id=workflow.workflow_id,
-            total_examples=total_examples,
-            workflow_config_id=workflow.workflow_config.id,
-            llm_model=workflow.llm_model,
-            Model=Model,
-            refine=examples_exist,
-            iteration=1,
-        )
-        workflow.status = "IDLE"
-        workflow.save()
-        return Response(fetcher.examples)
+        http_request = request._request
+        return iterate_workflow(http_request, workflow_id)
