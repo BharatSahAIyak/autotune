@@ -15,7 +15,7 @@ from workflow.serializers import (
     WorkflowSerializer,
 )
 from workflow.utils import create_pydantic_model
-from workflow.views import iterate_workflow
+from workflow.views import generate_task, iterate_workflow
 
 from .mixins import UserIDMixin
 
@@ -159,3 +159,10 @@ class WorkflowIterateView(UserIDMixin, APIView):
     def post(self, request, workflow_id):
         http_request = request._request
         return iterate_workflow(http_request, workflow_id)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class WorkflowGenerateView(UserIDMixin, APIView):
+    def post(self, request, workflow_id):
+        http_request = request._request
+        return generate_task(http_request, workflow_id)

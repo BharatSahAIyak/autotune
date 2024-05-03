@@ -428,12 +428,17 @@ class TaskView(APIView):
         return Response({"status": task.status})
 
 
-@api_view(["PUT"])
+@api_view(["POST"])
 def generate_task(request, workflow_id, *args, **kwargs):
     try:
         workflow = Workflows.objects.get(workflow_id=workflow_id)
     except Workflows.DoesNotExist:
         return JsonResponse({"error": "Workflow not found"}, status=404)
+
+    if request.data.get("total_examples"):
+        workflow.total_examples = request.data.get("total_examples")
+        workflow.save()
+
     task = Task.objects.create(
         name=f"Batch Task for Workflow {workflow_id}",
         status="Starting",
@@ -442,8 +447,19 @@ def generate_task(request, workflow_id, *args, **kwargs):
 
     process_task.delay(task.id)
 
+    estimated_cost = workflow.estimated_dataset_cost
+
+    if estimated_cost == None:
+        estimated_cost = "Not available without iterations being completed"
+
     return JsonResponse(
-        {"message": "Tasks creation initiated", "task_id": task.id}, status=202
+        {
+            "message": "Tasks creation initiated",
+            "task_id": task.id,
+            "workflow_id": workflow.workflow_id,
+            "expeced_cost": estimated_cost,
+        },
+        status=202,
     )
 
 
