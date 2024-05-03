@@ -1,7 +1,7 @@
-import json
 import logging
 import re
 from datetime import datetime
+from decimal import Decimal, getcontext
 
 import pandas as pd
 from celery import shared_task
@@ -10,7 +10,7 @@ from huggingface_hub import CommitOperationAdd, HfApi
 
 from .dataFetcher import DataFetcher
 from .models import Examples, Task, Workflows
-from .utils import create_pydantic_model
+from .utils import create_pydantic_model, get_model_cost
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ def process_task(self, task_id):
     task.total_samples = workflow.total_examples
     task.save()
 
-    Model, class_string = create_pydantic_model(workflow.workflow_config.schema_example)
+    Model, _ = create_pydantic_model(workflow.workflow_config.schema_example)
 
     fetcher = DataFetcher()
     fetcher.generate_or_refine(
@@ -41,6 +41,18 @@ def process_task(self, task_id):
         task_id=task_id,
         iteration=1,
     )
+
+    costs = get_model_cost(workflow.llm_model)
+
+    getcontext().prec = 6
+
+    input_cost = Decimal(fetcher.input_tokens * costs["input"]) / Decimal(1000)
+    output_cost = Decimal(fetcher.output_tokens * costs["output"]) / Decimal(1000)
+
+    iteration_cost = input_cost + output_cost
+    iteration_cost = iteration_cost.quantize(Decimal("0.0001"))
+    workflow.cost += iteration_cost
+    workflow.cost = workflow.cost.quantize(Decimal("0.0001"))
 
     workflow.status = "PUSHING_DATASET"
     workflow.save()

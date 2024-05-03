@@ -25,6 +25,8 @@ class DataFetcher:
     def __init__(self) -> None:
         self.generated = 0
         self.examples = []
+        self.input_tokens = 0
+        self.output_tokens = 0
 
     def generate_or_refine(
         self,
@@ -213,6 +215,8 @@ class DataFetcher:
             cleaned_data = response.strip("`json \n")
             response = json.loads(cleaned_data)
 
+        self.input_tokens += chat_completion.usage.prompt_tokens
+        self.output_tokens += chat_completion.usage.completion_tokens
         return response
 
     def parse_and_save_examples(

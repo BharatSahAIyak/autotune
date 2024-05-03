@@ -1,5 +1,7 @@
 import logging
+from decimal import Decimal, getcontext
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
@@ -23,7 +25,12 @@ from .serializers import (
     WorkflowDetailSerializer,
     WorkflowSerializer,
 )
-from .utils import create_pydantic_model, dehydrate_cache, validate_and_save_examples
+from .utils import (
+    create_pydantic_model,
+    dehydrate_cache,
+    get_model_cost,
+    validate_and_save_examples,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -194,9 +201,43 @@ def iterate_workflow(request, workflow_id):
         refine=examples_exist,
         iteration=1,
     )
+
+    costs = get_model_cost(workflow.llm_model)
+
+    getcontext().prec = 6
+
+    input_cost = Decimal(fetcher.input_tokens * costs["input"]) / Decimal(1000)
+    output_cost = Decimal(fetcher.output_tokens * costs["output"]) / Decimal(1000)
+
+    iteration_cost = input_cost + output_cost
+    iteration_cost = iteration_cost.quantize(Decimal("0.0001"))
+    workflow.cost += iteration_cost
+    workflow.cost = workflow.cost.quantize(Decimal("0.0001"))
+
+    batch_size = int(getattr(settings, "LLM_GENERATION_NUM_SAMPLES", 10))
+    total_batches = max(
+        1,
+        (workflow.total_examples + batch_size - 1) // batch_size,
+    )
+
+    workflow.estimated_dataset_cost = Decimal(
+        Decimal(1.25) * iteration_cost * total_batches
+    )
+
+    workflow.estimated_dataset_cost = workflow.estimated_dataset_cost.quantize(
+        Decimal("0.0001")
+    )
+
     workflow.status = "IDLE"
     workflow.save()
-    return Response(fetcher.examples)
+    return Response(
+        {
+            "workflow_cost": f"${workflow.cost}",
+            "iteration_cost": f"${iteration_cost}",
+            "estimated_dataset_cost": f"${workflow.estimated_dataset_cost}",
+            "data": fetcher.examples,
+        }
+    )
 
 
 class WorkflowListView(APIView):
@@ -425,7 +466,8 @@ class TaskView(APIView):
 
     def get(self, request, task_id):
         task = get_object_or_404(Task, pk=task_id)
-        return Response({"status": task.status})
+        percentage = task.generated_samples / task.total_samples
+        return Response({"status": task.status, "percentage": percentage})
 
 
 @api_view(["POST"])

@@ -21,11 +21,13 @@ def default_split():
 
 LLM_MODELS = [
     "gpt-4-0125-preview",
-    "gpt-4-turbo",
-    "gpt-4-turbo-preview",
     "gpt-4-1106-preview",
     "gpt-4-vision-preview",
+    "gpt-3.5-turbo-1106",
+    "gpt-3.5-turbo-0613",
+    "gpt-3.5-turbo-16k-0613",
     "gpt-3.5-turbo-0125",
+    "gpt-3.5-turbo-0301",
     "gpt-3.5-turbo",
 ]
 
@@ -43,7 +45,7 @@ class MLModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
-    huggingface_id = models.UUIDField(null=True, blank=True)
+    huggingface_id = models.CharField(null=True, blank=True)
     uploaded_at = models.DateTimeField(null=True, blank=True)
     latest_commit_hash = models.UUIDField(null=True, blank=True)
     is_trained_at_autotune = models.BooleanField(default=False)
@@ -55,12 +57,15 @@ class Dataset(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
-    huggingface_id = models.UUIDField(null=True, blank=True)
+    huggingface_id = models.CharField(null=True, blank=True)
     uploaded_at = models.DateTimeField(null=True, blank=True)
     is_generated_at_autotune = models.BooleanField(default=False)
     latest_commit_hash = models.UUIDField(null=True, blank=True)
     name = models.CharField(max_length=255)
     is_locally_cached = models.BooleanField(default=False)
+    workflow = models.ForeignKey(
+        "Workflows", on_delete=models.CASCADE, related_name="datasets"
+    )
 
 
 class WorkflowConfig(models.Model):
@@ -106,16 +111,11 @@ class Workflows(models.Model):
     llm_model = models.CharField(
         max_length=255, choices=[(model, model) for model in LLM_MODELS]
     )
-    cost = models.IntegerField(default=0)
-    estimated_dataset_cost = models.IntegerField(null=True, blank=True)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="workflow")
-    dataset = models.ForeignKey(
-        Dataset,
-        on_delete=models.CASCADE,
-        related_name="workflow",
-        blank=True,
-        null=True,
+    cost = models.DecimalField(decimal_places=4, max_digits=10, default=0)
+    estimated_dataset_cost = models.DecimalField(
+        decimal_places=4, max_digits=10, null=True, blank=True
     )
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="workflow")
     model = models.ForeignKey(
         MLModel, on_delete=models.CASCADE, related_name="+", blank=True, null=True
     )
@@ -175,8 +175,8 @@ class Task(models.Model):
     name = models.CharField(max_length=255)
     format = models.JSONField(default=dict)
     status = models.CharField(max_length=255, default="Starting")
-    dataset = models.ForeignKey(
-        Dataset, on_delete=models.SET_NULL, null=True, blank=True, related_name="tasks"
+    dataset = models.OneToOneField(
+        "Dataset", on_delete=models.CASCADE, related_name="task", null=True, blank=True
     )
     workflow = models.ForeignKey(
         "Workflows", on_delete=models.CASCADE, related_name="tasks"

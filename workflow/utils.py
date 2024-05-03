@@ -185,3 +185,20 @@ def validate_and_save_examples(examples_data, Model, workflow):
             return False, serializer.errors
 
     return True, examples
+
+
+# stores the cost per 1000 tokens used in USD
+def get_model_cost(model):
+    costs = {
+        "gpt-4-0125-preview": {"input": 0.0100, "output": 0.0300},
+        "gpt-4-1106-preview": {"input": 0.0100, "output": 0.0300},
+        "gpt-4-vision-preview": {"input": 0.0100, "output": 0.0300},
+        "gpt-3.5-turbo-1106": {"input": 0.0010, "output": 0.0020},
+        "gpt-3.5-turbo-0613": {"input": 0.0015, "output": 0.0020},
+        "gpt-3.5-turbo-16k-0613": {"input": 0.0030, "output": 0.0040},
+        "gpt-3.5-turbo-0301": {"input": 0.0015, "output": 0.0020},
+        "gpt-3.5-turbo-0125": {"input": 0.0005, "output": 0.0015},
+        "gpt-3.5-turbo": {"input": 0.0030, "output": 0.0060},
+    }
+
+    return costs[model]
