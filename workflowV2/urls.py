@@ -3,6 +3,7 @@ from django.views.decorators.csrf import csrf_exempt
 
 from .views import (
     GetDataView,
+    StatusView,
     WorkflowConfigCreateView,
     WorkflowDetailView,
     WorkflowGenerateView,
@@ -37,4 +38,5 @@ urlpatterns = [
         GetDataView.as_view(),
         name="get_data",
     ),
+    path("status", StatusView.as_view(), name="status"),
 ]

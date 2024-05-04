@@ -42,6 +42,9 @@ def process_task(self, task_id):
         iteration=1,
     )
 
+    task.refresh_from_db()
+    print(f"generated samples= {task.generated_samples} in celery")
+
     costs = get_model_cost(workflow.llm_model)
 
     getcontext().prec = 6

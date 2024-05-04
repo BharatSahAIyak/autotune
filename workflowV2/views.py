@@ -228,6 +228,8 @@ class GetDataView(UserIDMixin, APIView):
             )
 
     def get_dataset_links(self, dataset: Dataset):
+        if dataset is None:
+            return {}
         hf_api = HfApi(token=settings.HUGGING_FACE_TOKEN)
 
         files = ["test.csv", "validation.csv", "train.csv"]
@@ -239,27 +241,96 @@ class GetDataView(UserIDMixin, APIView):
                 repo_type="dataset",
                 revision=dataset.latest_commit_hash,
             ):
-                file_path = hf_api.hf_hub_download(
-                    repo_id=dataset.huggingface_id,
-                    filename=file,
-                    repo_type="dataset",
-                    revision=dataset.latest_commit_hash,
-                )
-                df = pd.read_csv(file_path)
-                buffer = io.BytesIO()
-                df.to_csv(buffer, index=False)
-                buffer.seek(0)
-                file_name = f"{dataset.huggingface_id.split('/')[1]}/{file}"  # Unique path in the bucket
-                minio_client.put_object(
-                    bucket_name=settings.MINIO_BUCKET_NAME,
-                    object_name=file_name,
-                    data=buffer,
-                    length=buffer.getbuffer().nbytes,
-                    content_type="application/csv",
-                )
+                minio_file_name = f"{dataset.huggingface_id.split('/')[1]}/{dataset.latest_commit_hash}/{file}"
+                try:
+                    minio_client.stat_object(
+                        settings.MINIO_BUCKET_NAME, minio_file_name
+                    )
+                    print(
+                        f"File {minio_file_name} already exists in MinIO, generating presigned URL."
+                    )
+                except Exception:
+                    # If the file does not exist in MinIO, download and upload it
+                    file_path = hf_api.hf_hub_download(
+                        repo_id=dataset.huggingface_id,
+                        filename=file,
+                        repo_type="dataset",
+                        revision=dataset.latest_commit_hash,
+                    )
+                    df = pd.read_csv(file_path)
+                    buffer = io.BytesIO()
+                    df.to_csv(buffer, index=False)
+                    buffer.seek(0)
+                    minio_client.put_object(
+                        bucket_name=settings.MINIO_BUCKET_NAME,
+                        object_name=minio_file_name,
+                        data=buffer,
+                        length=buffer.getbuffer().nbytes,
+                        content_type="application/csv",
+                    )
                 presigned_url = minio_client.presigned_get_object(
                     bucket_name=settings.MINIO_BUCKET_NAME,
-                    object_name=file_name,
+                    object_name=minio_file_name,
                 )
                 dataset_links[file.split(".")[0]] = presigned_url
         return dataset_links
+
+
+class StatusView(UserIDMixin, APIView):
+
+    def get(self, request):
+        workflow_id = request.query_params.get("workflow_id")
+        task_id = request.query_params.get("task_id")
+
+        if workflow_id:
+            workflow = get_object_or_404(Workflows, workflow_id=workflow_id)
+            tasks = workflow.tasks.all()
+            tasks_status = []
+            for task in tasks:
+                percentage = task.generated_samples / task.total_samples * 100
+                if percentage > 100:
+                    percentage = 100.0
+                dataset_links = GetDataView().get_dataset_links(task.dataset)
+                tasks_status.append(
+                    {
+                        "task_id": task.id,
+                        "status": task.status,
+                        "percentage": percentage,
+                        "dataset": dataset_links,
+                    }
+                )
+
+            response_data = {
+                "workflow": {
+                    "workflow_id": workflow.workflow_id,
+                    "workflow_status": workflow.status,
+                    "workflow_cost": f"${workflow.cost}",
+                },
+                "tasks": tasks_status,
+            }
+            return Response(response_data, status=status.HTTP_200_OK)
+
+        elif task_id:
+            task = get_object_or_404(Task, id=task_id)
+            workflow = task.workflow
+            dataset_links = GetDataView().get_dataset_links(task.dataset)
+
+            response_data = {
+                "workflow_id": workflow.workflow_id,
+                "workflow_status": workflow.status,
+                "tasks": [
+                    {
+                        "task_id": task.id,
+                        "status": task.status,
+                        "name": task.name,
+                        "dataset": dataset_links,
+                    }
+                ],
+            }
+            return Response(response_data, status=status.HTTP_200_OK)
+
+        else:
+            return Response(
+                {"error": "Either workflow_id or task_id must be provided"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )

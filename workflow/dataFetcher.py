@@ -4,7 +4,7 @@ from typing import List
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import F, Q
 from django.shortcuts import get_object_or_404
 from gevent import joinall, spawn
 from openai import OpenAI
@@ -46,9 +46,6 @@ class DataFetcher:
         logger.info(workflow_config_id)
         config = get_object_or_404(WorkflowConfig, id=workflow_config_id)
         try:
-            if task_id is not None:
-                task = get_object_or_404(Task, id=task_id)
-
             total_batches = max(
                 1,
                 (total_examples - self.generated + batch_size - 1) // batch_size,
@@ -73,9 +70,13 @@ class DataFetcher:
 
             joinall(greenlets)
 
-            if task_id:
+            if task_id is not None:
+                task = get_object_or_404(Task, id=task_id)
                 task.generated_samples = self.generated
+                logger.info(task.generated_samples)
+                logger.info(task.updated_at)
                 task.save()
+                logger.info(task.updated_at)
 
             if self.generated < total_examples and iteration < max_iterations:
                 self.generate_or_refine(
