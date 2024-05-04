@@ -191,7 +191,15 @@ def iterate_workflow(request, workflow_id):
 
     total_examples = request.data.get("total_examples", 10)
 
-    fetcher = DataFetcher()
+    max_iterations = request.data.get("max_iterations", 50)
+    max_concurrent_fetches = request.data.get("max_concurrent_fetches", 100)
+    batch_size = request.data.get("batch_size", 5)
+
+    fetcher = DataFetcher(
+        max_iterations=max_iterations,
+        max_concurrent_fetches=max_concurrent_fetches,
+        batch_size=batch_size,
+    )
     fetcher.generate_or_refine(
         workflow_id=workflow.workflow_id,
         total_examples=total_examples,
@@ -214,7 +222,6 @@ def iterate_workflow(request, workflow_id):
     workflow.cost += iteration_cost
     workflow.cost = workflow.cost.quantize(Decimal("0.0001"))
 
-    batch_size = int(getattr(settings, "LLM_GENERATION_NUM_SAMPLES", 10))
     total_batches = max(
         1,
         (workflow.total_examples + batch_size - 1) // batch_size,
@@ -481,13 +488,17 @@ def generate_task(request, workflow_id, *args, **kwargs):
         workflow.total_examples = request.data.get("total_examples")
         workflow.save()
 
+    max_iterations = request.data.get("max_iterations", 50)
+    max_concurrent_fetches = request.data.get("max_concurrent_fetches", 100)
+    batch_size = request.data.get("batch_size", 5)
+
     task = Task.objects.create(
         name=f"Batch Task for Workflow {workflow_id}",
         status="Starting",
         workflow=workflow,
     )
 
-    process_task.delay(task.id)
+    process_task.delay(task.id, max_iterations, max_concurrent_fetches, batch_size)
 
     estimated_cost = workflow.estimated_dataset_cost
 

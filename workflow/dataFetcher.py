@@ -16,17 +16,16 @@ logger = logging.getLogger(__name__)
 open_ai_key = settings.OPENAI_API_KEY
 client = OpenAI(api_key=open_ai_key)
 
-batch_size = int(getattr(settings, "MAX_BATCH_SIZE", 10))
-max_iterations = int(getattr(settings, "MAX_ITERATIONS", 100))
-max_concurrent_fetches = int(getattr(settings, "MAX_CONCURRENT_FETCHES", 100))
-
 
 class DataFetcher:
-    def __init__(self) -> None:
+    def __init__(self, max_iterations, max_concurrent_fetches, batch_size) -> None:
         self.generated = 0
         self.examples = []
         self.input_tokens = 0
         self.output_tokens = 0
+        self.max_iterations = max_iterations
+        self.max_concurrent_fetches = max_concurrent_fetches
+        self.batch_size = batch_size
 
     def generate_or_refine(
         self,
@@ -39,7 +38,7 @@ class DataFetcher:
         task_id=None,
         iteration=None,
     ):
-        if iteration is not None and iteration > 50:
+        if iteration is not None and iteration > self.max_iterations:
             logger.error("Max iterations reached")
             return
         user_prompt, prompt_id = self.construct_user_prompt(workflow_id, refine)
@@ -48,7 +47,8 @@ class DataFetcher:
         try:
             total_batches = max(
                 1,
-                (total_examples - self.generated + batch_size - 1) // batch_size,
+                (total_examples - self.generated + self.batch_size - 1)
+                // self.batch_size,
             )
 
             greenlets = [
@@ -65,7 +65,9 @@ class DataFetcher:
                     config.fields,
                     prompt_id,
                 )
-                for batch_index in range(min(total_batches, max_concurrent_fetches))
+                for batch_index in range(
+                    min(total_batches, self.max_concurrent_fetches)
+                )
             ]
 
             joinall(greenlets)
@@ -78,7 +80,7 @@ class DataFetcher:
                 task.save()
                 logger.info(task.updated_at)
 
-            if self.generated < total_examples and iteration < max_iterations:
+            if self.generated < total_examples and iteration < self.max_iterations:
                 self.generate_or_refine(
                     workflow_id=workflow_id,
                     total_examples=total_examples,
@@ -138,7 +140,6 @@ class DataFetcher:
         """
         workflow = Workflows.objects.get(workflow_id=workflow_id)
         config = get_object_or_404(WorkflowConfig, id=workflow.workflow_config.id)
-        num_samples = int(settings.LLM_GENERATION_NUM_SAMPLES) | 10
         user_prompt_object: Prompt = workflow.latest_prompt
         user_prompt = user_prompt_object.user_prompt
         user_prompt_template = config.user_prompt_template
@@ -161,10 +162,10 @@ class DataFetcher:
                 dynamic_text["reason"] = example.reason
                 example_texts += f"\n{json.dumps(dynamic_text,indent=2)}"
 
-            prompt += f"{user_prompt}\n\nBased on the examples below, refine and generate {num_samples} new examples.\n{example_texts}\n"
+            prompt += f"{user_prompt}\n\nBased on the examples below, refine and generate {self.batch_size} new examples.\n{example_texts}\n"
             prompt += f"Return the examples in a JSON object under an appropraite key following these pydantic models.\n\n {config.model_string}"
         else:
-            post_text = f"\nPlease generate {num_samples} new examples based on the instructions given above."
+            post_text = f"\nPlease generate {self.batch_size} new examples based on the instructions given above."
             post_text += f"Return the examples in a JSON object under an appropraite key following these pydantic models.\n\n {config.model_string}"
             prompt += f"{user_prompt}{post_text}"
 

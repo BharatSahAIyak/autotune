@@ -183,24 +183,30 @@ class GetDataView(UserIDMixin, APIView):
             if workflow_id:
                 workflow = get_object_or_404(Workflows, pk=workflow_id)
                 tasks = Task.objects.filter(workflow=workflow)
-                return Response(
-                    {
-                        "workflow_id": workflow_id,
-                        "data": [
-                            {
-                                "task": {
-                                    "task_id": task.id,
-                                    "links": self.get_dataset_links(task.dataset),
-                                }
+                data = []
+                for task in tasks:
+                    percentage = task.generated_samples / task.total_samples * 100
+                    if percentage > 100:
+                        percentage = 100.0
+                    data.append(
+                        {
+                            "task": {
+                                "task_id": task.id,
+                                "percentage": percentage,
+                                "links": self.get_dataset_links(task.dataset),
                             }
-                            for task in tasks
-                        ],
-                    },
+                        }
+                    )
+                return Response(
+                    {"workflow_id": workflow_id, "data": data},
                     status=status.HTTP_200_OK,
                 )
 
             elif task_id:
                 task = get_object_or_404(Task, pk=task_id)
+                percentage = task.generated_samples / task.total_samples * 100
+                if percentage > 100:
+                    percentage = 100.0
                 return Response(
                     {
                         "workflow_id": str(task.workflow_id),
@@ -208,6 +214,7 @@ class GetDataView(UserIDMixin, APIView):
                             {
                                 "task": {
                                     "task_id": task_id,
+                                    "percentage": percentage,
                                     "links": self.get_dataset_links(task.dataset),
                                 }
                             }
