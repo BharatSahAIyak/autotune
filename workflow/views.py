@@ -329,32 +329,12 @@ class ExamplesView(APIView):
         workflow = get_object_or_404(Workflows, pk=workflow_id)
         examples_data = request.data.get("examples", [])
 
-        for example_data in examples_data:
-            serializer = ExampleSerializer(data=example_data)
-            if serializer.is_valid():
-                example_id = serializer.validated_data.get("example_id")
+        Model, _ = create_pydantic_model(workflow.workflow_config.schema_example)
 
-                if example_id:
-                    try:
-                        example = Examples.objects.get(example_id=example_id)
-                        example.text = serializer.validated_data["text"]
-                        example.label = serializer.validated_data["label"]
-                        example.reason = serializer.validated_data["reason"]
-                        example.save()
-                    except Examples.DoesNotExist:
-                        raise ValidationError(
-                            f"Example with ID {example_id} does not exist."
-                        )
-                else:
-                    Examples.objects.create(
-                        workflow=workflow,
-                        text=serializer.validated_data["text"],
-                        label=serializer.validated_data["label"],
-                        reason=serializer.validated_data["reason"],
-                    )
+        success, result = validate_and_save_examples(examples_data, Model, workflow)
 
-            else:
-                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        if not success:
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
 
         return Response({"message": "Examples updated successfully"}, status=201)
 

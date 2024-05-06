@@ -1,6 +1,8 @@
 from django.urls import path
 from django.views.decorators.csrf import csrf_exempt
 
+from workflow.views import ExamplesView
+
 from .views import (
     GetDataView,
     StatusView,
@@ -39,4 +41,9 @@ urlpatterns = [
         name="get_data",
     ),
     path("status", StatusView.as_view(), name="status"),
+    path(
+        "examples/<uuid:workflow_id>/",
+        ExamplesView.as_view(),
+        name="examples-by-workflow",
+    ),
 ]
