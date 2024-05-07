@@ -38,7 +38,7 @@ class LoggingMixin:
 
 class UserIDMixin:
     def dispatch(self, request, *args, **kwargs):
-        user_id = request.headers.get("user")
+        user_id = request.headers.get("User-Id")
         if not user_id:
             return JsonResponse({"error": "User ID must be provided."}, status=401)
 

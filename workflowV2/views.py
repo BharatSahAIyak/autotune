@@ -304,7 +304,7 @@ class StatusView(UserIDMixin, APIView):
 
     def get(self, request):
         workflow_id = request.query_params.get("workflow_id")
-        task_id = request.query_params.get("task_id")
+        task_id = request.query_params.get("task-id")
 
         if workflow_id:
             workflow = get_object_or_404(Workflows, workflow_id=workflow_id)
