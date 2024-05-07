@@ -31,7 +31,8 @@ class WorkflowListView(UserIDMixin, APIView):
     """
 
     def get(self, request, *args, **kwargs):
-        workflows = Workflows.objects.all()
+        user_id = request.META["user"].user_id
+        workflows = Workflows.objects.filter(user_id=user_id)
         serializer = WorkflowDetailSerializer(workflows, many=True)
         return Response(serializer.data)
 
@@ -49,12 +50,20 @@ class WorkflowDetailView(UserIDMixin, APIView):
     """
 
     def get(self, request, workflow_id, *args, **kwargs):
-        workflow = get_object_or_404(Workflows, workflow_id=workflow_id)
+        user_id = request.META["user"].user_id
+
+        workflow = get_object_or_404(
+            Workflows, workflow_id=workflow_id, user_id=user_id
+        )
         serializer = WorkflowDetailSerializer(workflow)
         return Response(serializer.data)
 
     def put(self, request, workflow_id, *args, **kwargs):
-        workflow = get_object_or_404(Workflows, workflow_id=workflow_id)
+        user_id = request.META["user"].user_id
+
+        workflow = get_object_or_404(
+            Workflows, workflow_id=workflow_id, user_id=user_id
+        )
         serializer = WorkflowSerializer(workflow, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
@@ -62,7 +71,11 @@ class WorkflowDetailView(UserIDMixin, APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def delete(self, request, workflow_id, *args, **kwargs):
-        workflow = get_object_or_404(Workflows, workflow_id=workflow_id)
+        user_id = request.META["user"].user_id
+
+        workflow = get_object_or_404(
+            Workflows, workflow_id=workflow_id, user_id=user_id
+        )
         workflow.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -179,9 +192,13 @@ class GetDataView(UserIDMixin, APIView):
         data = request.data
         workflow_id = data.get("workflow_id")
         task_id = data.get("task_id")
+        user_id = request.META["user"].user_id
         try:
             if workflow_id:
-                workflow = get_object_or_404(Workflows, pk=workflow_id)
+
+                workflow = get_object_or_404(
+                    Workflows, workflow_id=workflow_id, user_id=user_id
+                )
                 tasks = Task.objects.filter(workflow=workflow)
                 data = []
                 for task in tasks:
@@ -203,7 +220,7 @@ class GetDataView(UserIDMixin, APIView):
                 )
 
             elif task_id:
-                task = get_object_or_404(Task, pk=task_id)
+                task = get_object_or_404(Task, pk=task_id, workflow__user_id=user_id)
                 percentage = task.generated_samples / task.total_samples * 100
                 if percentage > 100:
                     percentage = 100.0

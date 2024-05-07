@@ -34,11 +34,12 @@ LLM_MODELS = [
 
 class User(models.Model):
     user_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user_name = models.CharField(max_length=255)
+    user_name = models.CharField(max_length=255, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    huggingface_user_id = models.CharField(max_length=255)
+    huggingface_user_id = models.CharField(max_length=255, blank=True, null=True)
     is_active = models.BooleanField(default=True)  # for django's authentication
+    role = models.CharField(max_length=255, default="user")
 
 
 class MLModel(models.Model):

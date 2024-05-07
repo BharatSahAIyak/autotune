@@ -168,7 +168,9 @@ def iterate_workflow(request, workflow_id):
     Returns:
     - A response object with the outcome of the iteration process. The response structure and data depend on the json schema defined in the configfunction.
     """
-    workflow = get_object_or_404(Workflows, pk=workflow_id)
+    user_id = request.META["user"].user_id
+
+    workflow = get_object_or_404(Workflows, workflow_id=workflow_id, user_id=user_id)
     workflow.status = "ITERATION"
     workflow.save()
     examples_data = request.data.get("examples", [])
@@ -460,7 +462,12 @@ class TaskView(APIView):
 @api_view(["POST"])
 def generate_task(request, workflow_id, *args, **kwargs):
     try:
-        workflow = Workflows.objects.get(workflow_id=workflow_id)
+        user_id = request.META["user"].user_id
+
+        workflow = get_object_or_404(
+            Workflows, workflow_id=workflow_id, user_id=user_id
+        )
+
     except Workflows.DoesNotExist:
         return JsonResponse({"error": "Workflow not found"}, status=404)
 
