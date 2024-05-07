@@ -21,6 +21,7 @@ def default_split():
 
 LLM_MODELS = [
     "gpt-4-0125-preview",
+    "gpt-4-turbo",
     "gpt-4-turbo-preview",
     "gpt-4-1106-preview",
     "gpt-4-vision-preview",
@@ -66,11 +67,10 @@ class WorkflowConfig(models.Model):
     name = models.CharField(max_length=255)
     system_prompt = models.TextField()
     user_prompt_template = models.TextField()
-    json_schema = models.JSONField(default=dict, blank=True, null=True)
+    schema_example = models.JSONField(default=dict)
     parameters = models.JSONField(default=dict, blank=True, null=True)
-
-    def get_json_schema_as_dict(self):
-        return json.loads(self.json_schema)
+    fields = models.JSONField(default=dict)
+    model_string = models.TextField()
 
     def __str__(self):
         return self.name

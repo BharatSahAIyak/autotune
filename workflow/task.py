@@ -1,26 +1,23 @@
 import json
 import logging
-import traceback
 from typing import List
 
 from django.conf import settings
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from gevent import joinall, spawn
-from jsonschema.exceptions import ValidationError
-from jsonschema.validators import validate
-from langchain.schema.messages import HumanMessage, SystemMessage
-from langchain_core.output_parsers import PydanticOutputParser, StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
+from openai import OpenAI
 
 from .models import Examples, Task, WorkflowConfig, Workflows
-from .pydantic_models import QAPair, QAResponse
 
 logger = logging.getLogger(__name__)
 
+open_ai_key = settings.OPENAI_API_KEY
+client = OpenAI(api_key=open_ai_key)
 
 batch_size = int(getattr(settings, "MAX_BATCH_SIZE", 10))
 max_iterations = int(getattr(settings, "MAX_ITERATIONS", 100))
+max_concurrent_fetches = int(getattr(settings, "MAX_CONCURRENT_FETCHES", 100))
 
 
 class DataFetcher:
@@ -33,6 +30,7 @@ class DataFetcher:
         total_examples,
         workflow_config_id,
         llm_model,
+        Model,
         refine=False,
         task_id=None,
         iteration=None,
@@ -59,11 +57,12 @@ class DataFetcher:
                         llm_model,
                         iteration,
                         batch_index,
-                        config.json_schema,
                         workflow_id,
                         task_id,
+                        Model,
+                        config.fields,
                     )
-                    for batch_index in range(total_batches)
+                    for batch_index in range(min(total_batches, max_concurrent_fetches))
                 ]
 
                 joinall(greenlets)
@@ -76,6 +75,7 @@ class DataFetcher:
                         total_examples=total_examples,
                         workflow_config_id=workflow_config_id,
                         llm_model=llm_model,
+                        Model=Model,
                         refine=refine,
                         task_id=task_id,
                         iteration=iteration + 1,
@@ -87,6 +87,7 @@ class DataFetcher:
                     total_examples=total_examples,
                     workflow_config_id=workflow_config_id,
                     llm_model=llm_model,
+                    Model=Model,
                     refine=True,
                     task_id=task_id,
                     iteration=iteration + 1,
@@ -96,13 +97,12 @@ class DataFetcher:
                 response = self.call_llm_generate(
                     user_prompt, workflow_config_id, llm_model, iteration
                 )
-                logger.info(response)
                 if response:
-                    cleaned_data = response.strip("`json \n")
-                    parsed_response = json.loads(cleaned_data)
-                    self.validate_json(parsed_response, config.json_schema)
                     examples = self.parse_and_save_examples(
-                        workflow_id, parsed_response
+                        workflow_id=workflow_id,
+                        response=response,
+                        Model=Model,
+                        fields=config.fields,
                     )
                     return examples
                 else:
@@ -111,6 +111,7 @@ class DataFetcher:
                         total_examples=total_examples,
                         workflow_config_id=workflow_config_id,
                         llm_model=llm_model,
+                        Model=Model,
                         refine=refine,
                         iteration=iteration + 1,
                     )
@@ -121,6 +122,7 @@ class DataFetcher:
                     total_examples=total_examples,
                     workflow_config_id=workflow_config_id,
                     llm_model=llm_model,
+                    Model=Model,
                     refine=refine,
                     iteration=iteration + 1,
                 )
@@ -132,9 +134,10 @@ class DataFetcher:
         llm_model,
         iteration,
         batch_index,
-        json_schema,
         workflow_id,
         task_id,
+        Model,
+        fields,
     ):
         response = self.call_llm_generate(
             user_prompt, workflow_config_id, llm_model, iteration, batch_index
@@ -143,13 +146,13 @@ class DataFetcher:
         logger.info("response received from LLM")
 
         if response:
-            cleaned_data = response.strip("`json \n")
-            parsed_response = json.loads(cleaned_data)
-            self.validate_json(parsed_response, json_schema)
-            if parsed_response:
-                self.generated += self.parse_and_save_examples(
-                    workflow_id, parsed_response, task_id
-                )
+            self.generated += self.parse_and_save_examples(
+                workflow_id=workflow_id,
+                response=response,
+                Model=Model,
+                fields=fields,
+                task_id=task_id,
+            )
 
     def construct_user_prompt(self, workflow_id, refine=False):
         """
@@ -172,8 +175,11 @@ class DataFetcher:
             example_texts = ""
             for example in examples:
                 example_text = example.text
-                example_texts += f'\n{{"question": "{example_text["question"]}", "answer": "{example_text["answer"]}", "label": "{example.label}", "reason": "{example.reason}"}}'
-
+                dynamic_text = {key: example_text[key] for key in example_text}
+                dynamic_text['label'] = example.label
+                dynamic_text['reason'] = example.reason
+                example_texts += f'\n{json.dumps(dynamic_text,indent=2)}'
+                
             prompt += f"{user_prompt}\n\nBased on the examples below, refine and generate {num_samples} new examples.\n{example_texts}\n"
         else:
             post_text = f"\nPlease generate {num_samples} new examples based on the instructions given above."
@@ -186,69 +192,87 @@ class DataFetcher:
     ):
         logger.info(f"Running query for iteration {iteration} and batch {batch}")
         config = get_object_or_404(WorkflowConfig, id=workflow_config_id)
-        open_ai_key = settings.OPENAI_API_KEY
         parameters = {}
         if config.parameters:
-            parameters = json.loads(config.parameters)
-        llm = ChatOpenAI(
-            model=llm_model,
-            openai_api_key=open_ai_key,
-            max_tokens=parameters.get("max_tokens", 2048),
-            temperature=parameters.get("temperature", 0.7),
-        )
-        json_output_parser = PydanticOutputParser(pydantic_object=QAPair)
-        format_instructions = json_output_parser.get_format_instructions()
+            parameters = config.parameters
 
         system_prompt = config.system_prompt
 
-        system_prompt += f"\n\n{format_instructions}\n\n"
+        system_prompt += "Ensure that the JSON output adheres to the provided structure and includes appropriate descriptions for each field.\n"
+        system_prompt += "Pydantic classes for json structure: \n"
 
-        system_prompt += "YOU MUST FOLLOW THE ABOVE SCHEMA IN THE RESPONSE. YOU WILL BE PENALIZED FOR NOT DOING SO."
+        system_prompt += f"\n{config.model_string}\n"
 
-        prompt_template = ChatPromptTemplate.from_messages(
-            [
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=user_prompt),
-            ]
-        )
-        json_output_parser = StrOutputParser()
-
-        chain = prompt_template | llm | json_output_parser
-
-        try:
-            return chain.invoke(
-                {"user_prompt": user_prompt, "system_prompt": system_prompt}
+        if (
+            llm_model == "gpt-4-turbo-preview"
+            or llm_model == "gpt-4-turbo"
+            or llm_model == "gpt-3.5-turbo-0125"
+            or llm_model == "gpt-3.5-turbo"
+        ):
+            chat_completion = client.chat.completions.create(
+                model=llm_model,
+                max_tokens=parameters.get("max_tokens", 2048),
+                temperature=parameters.get("temperature", 1),
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                response_format={"type": "json_object"},
             )
+            response = chat_completion.choices[0].message.content
+        else:
+            chat_completion = client.chat.completions.create(
+                model=llm_model,
+                max_tokens=parameters.get("max_tokens", 2048),
+                temperature=parameters.get("temperature", 1),
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+            )
+            response = chat_completion.choices[0].message.content
+            cleaned_data = response.strip("`json \n")
+            response = json.loads(cleaned_data)
 
-        except Exception as e:
-            traceback.print_exc()
-            parsed_response = []
+        return response
 
-    def parse_and_save_examples(self, workflow_id, response, task_id=None):
+    def parse_and_save_examples(
+        self, workflow_id, response, Model, fields, task_id=None
+    ):
         workflow = Workflows.objects.get(workflow_id=workflow_id)
         try:
-            qa_response = QAResponse.parse_obj({"qa_pairs": response})
-            num_pairs = len(qa_response.qa_pairs)
-            examples = []
-            for qa_pair in qa_response.qa_pairs:
-                example = Examples.objects.create(
-                    workflow=workflow,
-                    text={"question": qa_pair.question, "answer": qa_pair.answer},
-                    task_id=task_id,
-                )
-                examples.append({"id": str(example.example_id), "text": example.text})
-            logger.info(f"generated {num_pairs} examples")
-            if task_id:
-                return num_pairs
-            else:
-                return examples
+            logger.info(response)
+            response = json.loads(response)
+            keys = list(response.keys())
+            for key in keys:
+                response = response[key]
+                data_values = list(response)
+                examples = []
+                with transaction.atomic():
+                    for data in data_values:
+                        validated_data = Model.model_validate(data, strict=True)
+                        # Serialize the validated data to dict suitable for JSONField
+                        example_data = validated_data.dict()
+                        example = Examples.objects.create(
+                            workflow=workflow,
+                            text=example_data,
+                            label=key,
+                            task_id=task_id,
+                        )
+                        examples.append(
+                            {
+                                "example_id": example.example_id,
+                                "text": example.text,
+                                "label": example.label,
+                                "reason": "",
+                            }
+                        )
+                if task_id:
+                    print(f"generated {len(data_values)} examples")
+                    return len(data_values)
+                else:
+                    return examples
+
         except Exception as e:
             print(f"Error parsing response: {str(e)}")
             raise
-
-    def validate_json(self, response, schema):
-        try:
-            validate(instance=response, schema=schema)
-            print("JSON is valid against the schema.")
-        except ValidationError as e:
-            print("JSON is not valid. Reason:", e)

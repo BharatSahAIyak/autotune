@@ -105,14 +105,8 @@ class WorkflowConfigSerializer(serializers.ModelSerializer):
             "name",
             "system_prompt",
             "user_prompt_template",
-            "json_schema",
+            "schema_example",
             "parameters",
+            "fields",
+            "model_string",
         )
-
-    def validate_json_schema(self, value):
-        try:
-            Validator.check_schema(value)
-        except Exception as e:
-            raise serializers.ValidationError(f"Invalid JSON schema: {str(e)}")
-
-        return value
