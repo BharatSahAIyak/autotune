@@ -1,3 +1,5 @@
+import io
+import json
 import logging
 import re
 from datetime import datetime
@@ -7,6 +9,8 @@ import pandas as pd
 from celery import shared_task
 from django.conf import settings
 from huggingface_hub import CommitOperationAdd, HfApi
+
+from workflowV2.utils import minio_client
 
 from .dataFetcher import DataFetcher
 from .models import Dataset, Examples, Task, Workflows
@@ -107,6 +111,12 @@ def upload_datasets_to_hf(task_id, split, repo_id):
             pairs[key] = value
         data.append(pairs)
 
+    jsonData = {"data": data}
+    json_str = json.dumps(jsonData)
+    json_bytes = json_str.encode("utf-8")
+    buffer = io.BytesIO(json_bytes)
+    buffer.seek(0)
+
     df = pd.DataFrame(data)
     # shuffle the data
     df = df.sample(frac=1).reset_index(drop=True)
@@ -135,6 +145,16 @@ def upload_datasets_to_hf(task_id, split, repo_id):
         logger.info(f"pushed {split_name[i]} csv file")
 
     latest_commit_hash = commit_info.split("/")[-1]
+
+    minio_file_name = f"{repo_id.split('/')[1]}/{latest_commit_hash}/data.json"
+
+    minio_client.put_object(
+        bucket_name=settings.MINIO_BUCKET_NAME,
+        object_name=minio_file_name,
+        data=buffer,
+        length=buffer.getbuffer().nbytes,
+        content_type="utf-8",
+    )
 
     return {
         "repo_url": repo_url,
