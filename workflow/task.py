@@ -8,7 +8,7 @@ from django.shortcuts import get_object_or_404
 from gevent import joinall, spawn
 from openai import OpenAI
 
-from .models import Examples, Task, WorkflowConfig, Workflows
+from .models import Examples, Prompt, Task, WorkflowConfig, Workflows
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +162,8 @@ class DataFetcher:
         workflow = Workflows.objects.get(workflow_id=workflow_id)
         config = get_object_or_404(WorkflowConfig, id=workflow.workflow_config.id)
         num_samples = int(settings.LLM_GENERATION_NUM_SAMPLES) | 10
-        user_prompt = workflow.prompt.user
+        user_prompt_object: Prompt = workflow.latest_prompt
+        user_prompt = user_prompt_object.user
         user_prompt_template = config.user_prompt_template
 
         prompt = ""
@@ -176,10 +177,10 @@ class DataFetcher:
             for example in examples:
                 example_text = example.text
                 dynamic_text = {key: example_text[key] for key in example_text}
-                dynamic_text['label'] = example.label
-                dynamic_text['reason'] = example.reason
-                example_texts += f'\n{json.dumps(dynamic_text,indent=2)}'
-                
+                dynamic_text["label"] = example.label
+                dynamic_text["reason"] = example.reason
+                example_texts += f"\n{json.dumps(dynamic_text,indent=2)}"
+
             prompt += f"{user_prompt}\n\nBased on the examples below, refine and generate {num_samples} new examples.\n{example_texts}\n"
         else:
             post_text = f"\nPlease generate {num_samples} new examples based on the instructions given above."
@@ -192,13 +193,12 @@ class DataFetcher:
     ):
         logger.info(f"Running query for iteration {iteration} and batch {batch}")
         config = get_object_or_404(WorkflowConfig, id=workflow_config_id)
-        parameters = {}
-        if config.parameters:
-            parameters = config.parameters
 
         system_prompt = config.system_prompt
 
-        system_prompt += "Ensure that the JSON output adheres to the provided structure and includes appropriate descriptions for each field.\n"
+        system_prompt += (
+            "Ensure that the JSON output adheres to the provided structure\n"
+        )
         system_prompt += "Pydantic classes for json structure: \n"
 
         system_prompt += f"\n{config.model_string}\n"
@@ -211,8 +211,7 @@ class DataFetcher:
         ):
             chat_completion = client.chat.completions.create(
                 model=llm_model,
-                max_tokens=parameters.get("max_tokens", 2048),
-                temperature=parameters.get("temperature", 1),
+                temperature=config.temperature,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
@@ -223,8 +222,7 @@ class DataFetcher:
         else:
             chat_completion = client.chat.completions.create(
                 model=llm_model,
-                max_tokens=parameters.get("max_tokens", 2048),
-                temperature=parameters.get("temperature", 1),
+                temperature=config.temperature,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},

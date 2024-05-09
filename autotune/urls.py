@@ -51,4 +51,5 @@ urlpatterns = [
     path("redoc/", schema_view.with_ui("redoc", cache_timeout=0), name="schema-redoc"),
     path("workflow/", include("workflow.urls")),
     path("task/status/<uuid:task_id>/", TaskView.as_view(), name="task-status"),
+    # path("workflow-v2/", include("workflowV2.urls")),
 ]

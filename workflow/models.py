@@ -68,7 +68,9 @@ class WorkflowConfig(models.Model):
     system_prompt = models.TextField()
     user_prompt_template = models.TextField()
     schema_example = models.JSONField(default=dict)
-    parameters = models.JSONField(default=dict, blank=True, null=True)
+    temperature = models.IntegerField(
+        default=1, validators=[MinValueValidator(0), MaxValueValidator(2)]
+    )
     fields = models.JSONField(default=dict)
     model_string = models.TextField()
 
@@ -104,6 +106,7 @@ class Workflows(models.Model):
         max_length=255, choices=[(model, model) for model in LLM_MODELS]
     )
     cost = models.IntegerField(default=0)
+    estimated_dataset_cost = models.IntegerField(null=True, blank=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="workflow")
     dataset = models.ForeignKey(
         Dataset,
@@ -124,6 +127,23 @@ class Workflows(models.Model):
     )
 
     status_details = models.JSONField(default=dict)
+    latest_prompt = models.ForeignKey(
+        "Prompt",
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="latest_for_workflow",
+    )
+
+
+class Prompt(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    user = models.TextField(blank=True, null=True)
+    source = models.TextField(blank=True, null=True)
+    workflow = models.ForeignKey(
+        Workflows, on_delete=models.CASCADE, related_name="prompts"
+    )
 
 
 class Examples(models.Model):
@@ -137,15 +157,8 @@ class Examples(models.Model):
     label = models.CharField(max_length=255)
     reason = models.TextField(max_length=255)
     task_id = models.UUIDField(null=True, blank=True)
-
-
-class Prompt(models.Model):
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    user = models.TextField(blank=True, null=True)
-    source = models.TextField(blank=True, null=True)
-    workflow = models.OneToOneField(
-        Workflows, on_delete=models.CASCADE, related_name="prompt"
+    prompt = models.ForeignKey(
+        Prompt, on_delete=models.CASCADE, related_name="examples", null=True, blank=True
     )
 
 

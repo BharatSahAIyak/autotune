@@ -8,7 +8,7 @@ from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.exceptions import ValidationError
-from rest_framework.generics import ListAPIView, RetrieveAPIView, UpdateAPIView
+from rest_framework.generics import ListAPIView, UpdateAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -19,6 +19,7 @@ from .serializers import (
     PromptSerializer,
     UserSerializer,
     WorkflowConfigSerializer,
+    WorkflowDetailSerializer,
     WorkflowSerializer,
 )
 from .task import DataFetcher
@@ -222,69 +223,69 @@ def iterate_workflow(request, workflow_id):
     return Response(response)
 
 
-class WorkflowDetailView(RetrieveAPIView):
-    """
-    Retrieves details of a specific workflow by its unique 'workflow_id'.
+class WorkflowListView(APIView):
+    def get(self, request, *args, **kwargs):
+        workflows = Workflows.objects.all()
+        serializer = WorkflowDetailSerializer(workflows, many=True)
+        return Response(serializer.data)
 
-    Args:
-        - workflow_id (UUID): The unique identifier of the workflow to retrieve.
-          It is part of the URL pattern and should be provided in the request URL.
+    def post(self, request, *args, **kwargs):
+        serializer = WorkflowSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    Returns:
-        {
-        "workflow": {
-            "workflow_id": "123e4567-e89b-12d3-a456-426614174000",
-            "workflow_name": "Data Analysis Workflow",
-            "total_examples": 1000,
-            "split": [70, 20, 10],
-            "llm_model": "gpt-4-0125-preview",
-            "cost": 200,
-            "tags": ["data analysis", "machine learning"],
-            "user": "uuid-of-the-user",
-            "created_at": "2024-03-07T12:00:00Z",
-            "updated_at": "2024-03-07T12:00:00Z",
-            "prompt": {
-                "id": "789e4567-e89b-12d3-a456-426614174999",
-                "text": "Generate insights from the given dataset.",
-                "parameters": {
-                    "max_tokens": 150,
-                    "temperature": 0.5
-                },
-                "created_at": "2024-03-07T12:00:00Z",
-                "updated_at": "2024-03-07T12:00:00Z",
-                "workflow": "123e4567-e89b-12d3-a456-426614174000"
-            }
-        }
-    }
-    """
 
-    queryset = Workflows.objects.all()
-    serializer_class = WorkflowSerializer
-    lookup_field = "workflow_id"
+class SingleWorkflowView(APIView):
+    def get(self, request, workflow_id, *args, **kwargs):
+        workflow = get_object_or_404(Workflows, workflow_id=workflow_id)
+        serializer = WorkflowDetailSerializer(workflow)
+        return Response(serializer.data)
+
+    def put(self, request, workflow_id, *args, **kwargs):
+        workflow = get_object_or_404(Workflows, workflow_id=workflow_id)
+        serializer = WorkflowSerializer(workflow, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, workflow_id, *args, **kwargs):
+        workflow = get_object_or_404(Workflows, workflow_id=workflow_id)
+        workflow.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class PromptViewSet(APIView):
-
     def get(self, request, workflow_id):
         workflow = get_object_or_404(Workflows, pk=workflow_id)
-        prompt = workflow.prompt
-        return Response(PromptSerializer(prompt).data)
+        prompts = (
+            workflow.prompts.all()
+        )  # Get all prompts associated with this workflow
+        return Response(PromptSerializer(prompts, many=True).data)
 
-    def put(self, request, workflow_id):
+    def post(self, request, workflow_id):
         workflow = get_object_or_404(Workflows, pk=workflow_id)
-        prompt = workflow.prompt
+        if not request.data.get("user_prompt"):
+            return Response(
+                {"message": "user_prompt is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        prompt_data = {
+            "user": request.data.get("user_prompt"),
+            "workflow": workflow.pk,
+        }
+        serializer = PromptSerializer(data=prompt_data)
+        if serializer.is_valid():
+            prompt = serializer.save(workflow=workflow)
 
-        user_prompt = request.data.get("user")
-        source = request.data.get("source")
+            # Update the latest_prompt field on the workflow to this new prompt
+            workflow.latest_prompt = prompt
+            workflow.save()
 
-        if user_prompt is not None:
-            prompt.user = user_prompt
-
-        if source is not None:
-            prompt.source = source
-
-        prompt.save()
-        return Response(PromptSerializer(prompt).data)
+            return Response(serializer.data, status=201)
+        return Response(serializer.errors, status=400)
 
 
 class ExamplesView(APIView):
