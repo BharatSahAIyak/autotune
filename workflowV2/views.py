@@ -194,7 +194,28 @@ class GetDataView(UserIDMixin, APIView):
         task_id = data.get("task_id")
         user_id = request.META["user"].user_id
         try:
-            if workflow_id:
+            if task_id:
+                task = get_object_or_404(Task, pk=task_id, workflow__user_id=user_id)
+                percentage = task.generated_samples / task.total_samples * 100
+                if percentage > 100:
+                    percentage = 100.0
+                return Response(
+                    {
+                        "workflow_id": str(task.workflow_id),
+                        "data": [
+                            {
+                                "task": {
+                                    "task_id": task_id,
+                                    "percentage": percentage,
+                                    "links": self.get_dataset_links(task.dataset),
+                                }
+                            }
+                        ],
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+            elif workflow_id:
 
                 workflow = get_object_or_404(
                     Workflows, workflow_id=workflow_id, user_id=user_id
@@ -216,27 +237,6 @@ class GetDataView(UserIDMixin, APIView):
                     )
                 return Response(
                     {"workflow_id": workflow_id, "data": data},
-                    status=status.HTTP_200_OK,
-                )
-
-            elif task_id:
-                task = get_object_or_404(Task, pk=task_id, workflow__user_id=user_id)
-                percentage = task.generated_samples / task.total_samples * 100
-                if percentage > 100:
-                    percentage = 100.0
-                return Response(
-                    {
-                        "workflow_id": str(task.workflow_id),
-                        "data": [
-                            {
-                                "task": {
-                                    "task_id": task_id,
-                                    "percentage": percentage,
-                                    "links": self.get_dataset_links(task.dataset),
-                                }
-                            }
-                        ],
-                    },
                     status=status.HTTP_200_OK,
                 )
 
@@ -282,6 +282,7 @@ class GetDataView(UserIDMixin, APIView):
                         revision=dataset.latest_commit_hash,
                     )
                     df = pd.read_csv(file_path)
+                    df.drop(df.columns[0], axis=1)
                     buffer = io.BytesIO()
                     df.to_csv(buffer, index=False)
                     buffer.seek(0)
