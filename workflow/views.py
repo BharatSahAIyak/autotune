@@ -1,5 +1,7 @@
 import logging
+from decimal import Decimal, getcontext
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
@@ -13,7 +15,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .celery_task import process_task
-from .models import Examples, Task, WorkflowConfig, Workflows
+from .dataFetcher import DataFetcher
+from .models import Examples, Prompt, Task, WorkflowConfig, Workflows
 from .serializers import (
     ExampleSerializer,
     PromptSerializer,
@@ -22,8 +25,12 @@ from .serializers import (
     WorkflowDetailSerializer,
     WorkflowSerializer,
 )
-from .task import DataFetcher
-from .utils import create_pydantic_model, dehydrate_cache
+from .utils import (
+    create_pydantic_model,
+    dehydrate_cache,
+    get_model_cost,
+    validate_and_save_examples,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +116,7 @@ def create_workflow_with_prompt(request):
             workflow = workflow_serializer.save()
 
             prompt_data = {
-                "user": request.data.get("user_prompt", ""),
+                "user_prompt": request.data.get("user_prompt", ""),
                 "workflow": workflow.pk,
             }
 
@@ -171,56 +178,66 @@ def iterate_workflow(request, workflow_id):
         or len(examples_data) > 0
     )
 
-    for example_data in examples_data:
-        serializer = ExampleSerializer(data=example_data)
+    Model, _ = create_pydantic_model(workflow.workflow_config.schema_example)
 
-        if serializer.is_valid():
-            example_id = serializer.validated_data.get("example_id", None)
-            text = serializer.validated_data["text"]
-            label = serializer.validated_data["label"]
-            reason = serializer.validated_data["reason"]
+    success, result = validate_and_save_examples(examples_data, Model, workflow)
 
-            if example_id:
-                example, created = Examples.objects.get_or_create(
-                    example_id=example_id,
-                    defaults={
-                        "workflow": workflow,
-                        "text": text,
-                        "label": label,
-                        "reason": reason,
-                    },
-                )
+    if not success:
+        return Response(result, status=status.HTTP_400_BAD_REQUEST)
 
-                if not created:
-                    example.text = text
-                    example.label = label
-                    example.reason = reason
-                    example.save()
-            else:
-                Examples.objects.create(
-                    workflow=workflow,
-                    text=text,
-                    label=label,
-                    reason=reason,
-                )
+    user_prompt = request.data.get("user_prompt")
+    if user_prompt:
+        Prompt.objects.create(user_prompt=user_prompt, workflow=workflow)
 
-        else:
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    total_examples = request.data.get("total_examples", 10)
 
-    Model, class_string = create_pydantic_model(workflow.workflow_config.schema_example)
     fetcher = DataFetcher()
-    response = fetcher.generate_or_refine(
+    fetcher.generate_or_refine(
         workflow_id=workflow.workflow_id,
-        total_examples=workflow.total_examples,
+        total_examples=total_examples,
         workflow_config_id=workflow.workflow_config.id,
         llm_model=workflow.llm_model,
         Model=Model,
         refine=examples_exist,
         iteration=1,
     )
+
+    costs = get_model_cost(workflow.llm_model)
+
+    getcontext().prec = 6
+
+    input_cost = Decimal(fetcher.input_tokens * costs["input"]) / Decimal(1000)
+    output_cost = Decimal(fetcher.output_tokens * costs["output"]) / Decimal(1000)
+
+    iteration_cost = input_cost + output_cost
+    iteration_cost = iteration_cost.quantize(Decimal("0.0001"))
+    workflow.cost += iteration_cost
+    workflow.cost = workflow.cost.quantize(Decimal("0.0001"))
+
+    batch_size = int(getattr(settings, "LLM_GENERATION_NUM_SAMPLES", 10))
+    total_batches = max(
+        1,
+        (workflow.total_examples + batch_size - 1) // batch_size,
+    )
+
+    workflow.estimated_dataset_cost = Decimal(
+        Decimal(1.25) * iteration_cost * total_batches
+    )
+
+    workflow.estimated_dataset_cost = workflow.estimated_dataset_cost.quantize(
+        Decimal("0.0001")
+    )
+
     workflow.status = "IDLE"
     workflow.save()
-    return Response(response)
+    return Response(
+        {
+            "workflow_cost": f"${workflow.cost}",
+            "iteration_cost": f"${iteration_cost}",
+            "estimated_dataset_cost": f"${workflow.estimated_dataset_cost}",
+            "data": fetcher.examples,
+        }
+    )
 
 
 class WorkflowListView(APIView):
@@ -273,7 +290,7 @@ class PromptViewSet(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         prompt_data = {
-            "user": request.data.get("user_prompt"),
+            "user_prompt": request.data.get("user_prompt"),
             "workflow": workflow.pk,
         }
         serializer = PromptSerializer(data=prompt_data)
@@ -449,15 +466,21 @@ class TaskView(APIView):
 
     def get(self, request, task_id):
         task = get_object_or_404(Task, pk=task_id)
-        return Response({"status": task.status})
+        percentage = task.generated_samples / task.total_samples
+        return Response({"status": task.status, "percentage": percentage})
 
 
-@api_view(["PUT"])
+@api_view(["POST"])
 def generate_task(request, workflow_id, *args, **kwargs):
     try:
         workflow = Workflows.objects.get(workflow_id=workflow_id)
     except Workflows.DoesNotExist:
         return JsonResponse({"error": "Workflow not found"}, status=404)
+
+    if request.data.get("total_examples"):
+        workflow.total_examples = request.data.get("total_examples")
+        workflow.save()
+
     task = Task.objects.create(
         name=f"Batch Task for Workflow {workflow_id}",
         status="Starting",
@@ -466,8 +489,19 @@ def generate_task(request, workflow_id, *args, **kwargs):
 
     process_task.delay(task.id)
 
+    estimated_cost = workflow.estimated_dataset_cost
+
+    if estimated_cost == None:
+        estimated_cost = "Not available without iterations being completed"
+
     return JsonResponse(
-        {"message": "Tasks creation initiated", "task_id": task.id}, status=202
+        {
+            "message": "Tasks creation initiated",
+            "task_id": task.id,
+            "workflow_id": workflow.workflow_id,
+            "expeced_cost": estimated_cost,
+        },
+        status=202,
     )
 
 

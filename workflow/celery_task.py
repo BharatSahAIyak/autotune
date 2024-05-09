@@ -1,16 +1,16 @@
-import json
 import logging
 import re
 from datetime import datetime
+from decimal import Decimal, getcontext
 
 import pandas as pd
 from celery import shared_task
 from django.conf import settings
 from huggingface_hub import CommitOperationAdd, HfApi
 
-from .models import Examples, Task, Workflows
-from .task import DataFetcher
-from .utils import create_pydantic_model
+from .dataFetcher import DataFetcher
+from .models import Dataset, Examples, Task, Workflows
+from .utils import create_pydantic_model, get_model_cost
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ def process_task(self, task_id):
     task.total_samples = workflow.total_examples
     task.save()
 
-    Model, class_string = create_pydantic_model(workflow.workflow_config.schema_example)
+    Model, _ = create_pydantic_model(workflow.workflow_config.schema_example)
 
     fetcher = DataFetcher()
     fetcher.generate_or_refine(
@@ -42,6 +42,21 @@ def process_task(self, task_id):
         iteration=1,
     )
 
+    task.refresh_from_db()
+    print(f"generated samples= {task.generated_samples} in celery")
+
+    costs = get_model_cost(workflow.llm_model)
+
+    getcontext().prec = 6
+
+    input_cost = Decimal(fetcher.input_tokens * costs["input"]) / Decimal(1000)
+    output_cost = Decimal(fetcher.output_tokens * costs["output"]) / Decimal(1000)
+
+    iteration_cost = input_cost + output_cost
+    iteration_cost = iteration_cost.quantize(Decimal("0.0001"))
+    workflow.cost += iteration_cost
+    workflow.cost = workflow.cost.quantize(Decimal("0.0001"))
+
     workflow.status = "PUSHING_DATASET"
     workflow.save()
     task.status = "Uploading"
@@ -53,11 +68,19 @@ def process_task(self, task_id):
     repo_name = re.sub(r"\s+", "_", repo_name)
     repo_id = f"{username}/{repo_name}"
 
-    upload_datasets_to_hf(task_id, workflow.split, repo_id)
+    dataset_info = upload_datasets_to_hf(task_id, workflow.split, repo_id)
+    dataset = Dataset.objects.create(
+        huggingface_id=repo_id,
+        uploaded_at=dataset_info["uploaded_at"],
+        latest_commit_hash=dataset_info["latest_commit_hash"],
+        name=workflow.workflow_name,
+        workflow=workflow,
+    )
 
     workflow.status = "IDLE"
     workflow.save()
     task.status = "Completed"
+    task.dataset = dataset
     task.save()
 
 
@@ -93,14 +116,23 @@ def upload_datasets_to_hf(task_id, split, repo_id):
     splits = [train_df, validation_df, test_df]
     split_name = ["train", "validation", "test"]
 
+    uploaded_at = datetime.now()
     for i, split in enumerate(splits):
         csv_data = split.to_csv()
         file_data = csv_data.encode("utf-8")
         operation = CommitOperationAdd(f"{split_name[i]}.csv", file_data)
-        hf_api.create_commit(
+        commit_info = hf_api.create_commit(
             repo_id=repo_id,
             operations=[operation],
             commit_message=f"Adding {split_name[i]} csv file",
             repo_type="dataset",
         )
         logger.info(f"pushed {split_name[i]} csv file")
+
+    latest_commit_hash = commit_info.split("/")[-1]
+
+    return {
+        "repo_url": repo_url,
+        "latest_commit_hash": latest_commit_hash,
+        "uploaded_at": uploaded_at,
+    }

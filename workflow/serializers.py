@@ -23,18 +23,30 @@ class DatasetSerializer(serializers.ModelSerializer):
         fields = ("id", "name", "is_locally_cached")
 
 
-class ExampleSerializer(serializers.ModelSerializer):
-    example_id = serializers.UUIDField(required=False)
-
-    class Meta:
-        model = Examples
-        fields = ("example_id", "text", "label", "reason")
-
-
 class PromptSerializer(serializers.ModelSerializer):
     class Meta:
         model = Prompt
-        fields = "__all__"
+        fields = (
+            "id",
+            "created_at",
+            "updated_at",
+            "user_prompt",
+            "system_prompt",
+            "source",
+            "workflow",
+        )
+
+
+class ExampleSerializer(serializers.ModelSerializer):
+    example_id = serializers.UUIDField(required=False)
+    prompt = PromptSerializer(read_only=True)
+    text = serializers.JSONField(required=True)
+    label = serializers.CharField(required=True)
+    reason = serializers.CharField(required=True)
+
+    class Meta:
+        model = Examples
+        fields = ("example_id", "prompt", "text", "label", "reason")
 
 
 class WorkflowDetailSerializer(serializers.ModelSerializer):
@@ -57,6 +69,7 @@ class WorkflowDetailSerializer(serializers.ModelSerializer):
             "split",
             "llm_model",
             "cost",
+            "estimated_dataset_cost",
             "tags",
             "user",
             "dataset",
@@ -82,13 +95,16 @@ class WorkflowSerializer(serializers.ModelSerializer):
             "total_examples",
             "split",
             "llm_model",
-            "cost",
             "tags",
             "user",
             "examples",
             "latest_prompt",
             "workflow_config",
         )
+        extra_kwargs = {
+            "cost": {"default": 0},
+            "estimated_dataset_cost": {"default": "NULL till first iteration"},
+        }
 
     def create(self, validated_data):
         examples_data = validated_data.pop("examples", [])
