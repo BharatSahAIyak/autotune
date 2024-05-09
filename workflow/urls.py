@@ -3,6 +3,8 @@ from django.urls import path
 from . import views
 from .views import (
     ExamplesView,
+    GenerateTaskView,
+    IterateWorkflowView,
     PromptViewSet,
     SingleWorkflowView,
     WorkflowConfigView,
@@ -25,7 +27,9 @@ urlpatterns = [
         name="workflow-detail",
     ),
     path(
-        "iterate/<uuid:workflow_id>/", views.iterate_workflow, name="iterate-workflow"
+        "iterate/<uuid:workflow_id>/",
+        IterateWorkflowView.as_view(),
+        name="iterate-workflow",
     ),
     path("prompt/<uuid:workflow_id>/", PromptViewSet.as_view(), name="prompt"),
     path(
@@ -43,7 +47,9 @@ urlpatterns = [
         WorkflowStatusView.as_view(),
         name="workflow-status",
     ),
-    path("generate/<uuid:workflow_id>/", views.generate_task, name="generate-task"),
+    path(
+        "generate/<uuid:workflow_id>/", GenerateTaskView.as_view(), name="generate-task"
+    ),
     # Examples routes
     path("examples/", ExamplesView.as_view(), name="examples"),
     path(

@@ -6,6 +6,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
+from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -16,6 +17,7 @@ from rest_framework.views import APIView
 
 from .celery_task import process_task
 from .dataFetcher import DataFetcher
+from .mixins import UserIDMixin
 from .models import Examples, Prompt, Task, WorkflowConfig, Workflows
 from .serializers import (
     ExampleSerializer,
@@ -140,8 +142,8 @@ def create_workflow_with_prompt(request):
     )
 
 
-@api_view(["POST"])
-def iterate_workflow(request, workflow_id):
+@method_decorator(csrf_exempt, name="dispatch")
+class IterateWorkflowView(UserIDMixin, APIView):
     """
     Iterates over a workflow by either adding new examples or refining existing ones based on the provided data.
     This operation can generate or refine questions and answers based on the examples associated with the workflow.
@@ -168,85 +170,91 @@ def iterate_workflow(request, workflow_id):
     Returns:
     - A response object with the outcome of the iteration process. The response structure and data depend on the json schema defined in the configfunction.
     """
-    user_id = request.META["user"].user_id
 
-    workflow = get_object_or_404(Workflows, workflow_id=workflow_id, user_id=user_id)
-    workflow.status = "ITERATION"
-    workflow.save()
-    examples_data = request.data.get("examples", [])
+    def post(self, request, workflow_id, *args, **kwargs):
+        user_id = request.META["user"].user_id
 
-    examples_exist = (
-        Examples.objects.filter(workflow_id=workflow_id, label__isnull=False).exists()
-        or len(examples_data) > 0
-    )
+        workflow = get_object_or_404(
+            Workflows, workflow_id=workflow_id, user_id=user_id
+        )
+        workflow.status = "ITERATION"
+        workflow.save()
+        examples_data = request.data.get("examples", [])
 
-    Model, _ = create_pydantic_model(workflow.workflow_config.schema_example)
+        examples_exist = (
+            Examples.objects.filter(
+                workflow_id=workflow_id, label__isnull=False
+            ).exists()
+            or len(examples_data) > 0
+        )
 
-    success, result = validate_and_save_examples(examples_data, Model, workflow)
+        Model, _ = create_pydantic_model(workflow.workflow_config.schema_example)
 
-    if not success:
-        return Response(result, status=status.HTTP_400_BAD_REQUEST)
+        success, result = validate_and_save_examples(examples_data, Model, workflow)
 
-    user_prompt = request.data.get("user_prompt")
-    if user_prompt:
-        Prompt.objects.create(user_prompt=user_prompt, workflow=workflow)
+        if not success:
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
 
-    total_examples = request.data.get("total_examples", 10)
+        user_prompt = request.data.get("user_prompt")
+        if user_prompt:
+            Prompt.objects.create(user_prompt=user_prompt, workflow=workflow)
 
-    max_iterations = request.data.get("max_iterations", 50)
-    max_concurrent_fetches = request.data.get("max_concurrent_fetches", 100)
-    batch_size = request.data.get("batch_size", 5)
+        total_examples = request.data.get("total_examples", 10)
 
-    fetcher = DataFetcher(
-        max_iterations=max_iterations,
-        max_concurrent_fetches=max_concurrent_fetches,
-        batch_size=batch_size,
-    )
-    fetcher.generate_or_refine(
-        workflow_id=workflow.workflow_id,
-        total_examples=total_examples,
-        workflow_config_id=workflow.workflow_config.id,
-        llm_model=workflow.llm_model,
-        Model=Model,
-        refine=examples_exist,
-        iteration=1,
-    )
+        max_iterations = request.data.get("max_iterations", 50)
+        max_concurrent_fetches = request.data.get("max_concurrent_fetches", 100)
+        batch_size = request.data.get("batch_size", 5)
 
-    costs = get_model_cost(workflow.llm_model)
+        fetcher = DataFetcher(
+            max_iterations=max_iterations,
+            max_concurrent_fetches=max_concurrent_fetches,
+            batch_size=batch_size,
+        )
+        fetcher.generate_or_refine(
+            workflow_id=workflow.workflow_id,
+            total_examples=total_examples,
+            workflow_config_id=workflow.workflow_config.id,
+            llm_model=workflow.llm_model,
+            Model=Model,
+            refine=examples_exist,
+            iteration=1,
+        )
 
-    getcontext().prec = 6
+        costs = get_model_cost(workflow.llm_model)
 
-    input_cost = Decimal(fetcher.input_tokens * costs["input"]) / Decimal(1000)
-    output_cost = Decimal(fetcher.output_tokens * costs["output"]) / Decimal(1000)
+        getcontext().prec = 6
 
-    iteration_cost = input_cost + output_cost
-    iteration_cost = iteration_cost.quantize(Decimal("0.0001"))
-    workflow.cost += iteration_cost
-    workflow.cost = workflow.cost.quantize(Decimal("0.0001"))
+        input_cost = Decimal(fetcher.input_tokens * costs["input"]) / Decimal(1000)
+        output_cost = Decimal(fetcher.output_tokens * costs["output"]) / Decimal(1000)
 
-    total_batches = max(
-        1,
-        (workflow.total_examples + batch_size - 1) // batch_size,
-    )
+        iteration_cost = input_cost + output_cost
+        iteration_cost = iteration_cost.quantize(Decimal("0.0001"))
+        workflow.cost += iteration_cost
+        workflow.cost = workflow.cost.quantize(Decimal("0.0001"))
 
-    workflow.estimated_dataset_cost = Decimal(
-        Decimal(1.25) * iteration_cost * total_batches
-    )
+        total_batches = max(
+            1,
+            (workflow.total_examples + batch_size - 1) // batch_size,
+        )
 
-    workflow.estimated_dataset_cost = workflow.estimated_dataset_cost.quantize(
-        Decimal("0.0001")
-    )
+        workflow.estimated_dataset_cost = Decimal(
+            Decimal(1.25) * iteration_cost * total_batches
+        )
 
-    workflow.status = "IDLE"
-    workflow.save()
-    return Response(
-        {
-            "workflow_cost": f"${workflow.cost}",
-            "iteration_cost": f"${iteration_cost}",
-            "estimated_dataset_cost": f"${workflow.estimated_dataset_cost}",
-            "data": fetcher.examples,
-        }
-    )
+        workflow.estimated_dataset_cost = workflow.estimated_dataset_cost.quantize(
+            Decimal("0.0001")
+        )
+
+        workflow.status = "IDLE"
+        workflow.save()
+        return Response(
+            {
+                "workflow_cost": f"${workflow.cost}",
+                "iteration_cost": f"${iteration_cost}",
+                "estimated_dataset_cost": f"${workflow.estimated_dataset_cost}",
+                "data": fetcher.examples,
+            }
+        )
 
 
 class WorkflowListView(APIView):
@@ -459,48 +467,46 @@ class TaskView(APIView):
         return Response({"status": task.status, "percentage": percentage})
 
 
-@api_view(["POST"])
-def generate_task(request, workflow_id, *args, **kwargs):
-    try:
+@method_decorator(csrf_exempt, name="dispatch")
+class GenerateTaskView(UserIDMixin, APIView):
+    def post(self, request, workflow_id, *args, **kwargs):
+
         user_id = request.META["user"].user_id
 
         workflow = get_object_or_404(
             Workflows, workflow_id=workflow_id, user_id=user_id
         )
 
-    except Workflows.DoesNotExist:
-        return JsonResponse({"error": "Workflow not found"}, status=404)
+        if request.data.get("total_examples"):
+            workflow.total_examples = request.data.get("total_examples")
+            workflow.save()
 
-    if request.data.get("total_examples"):
-        workflow.total_examples = request.data.get("total_examples")
-        workflow.save()
+        max_iterations = request.data.get("max_iterations", 50)
+        max_concurrent_fetches = request.data.get("max_concurrent_fetches", 100)
+        batch_size = request.data.get("batch_size", 5)
 
-    max_iterations = request.data.get("max_iterations", 50)
-    max_concurrent_fetches = request.data.get("max_concurrent_fetches", 100)
-    batch_size = request.data.get("batch_size", 5)
+        task = Task.objects.create(
+            name=f"Batch Task for Workflow {workflow_id}",
+            status="Starting",
+            workflow=workflow,
+        )
 
-    task = Task.objects.create(
-        name=f"Batch Task for Workflow {workflow_id}",
-        status="Starting",
-        workflow=workflow,
-    )
+        process_task.delay(task.id, max_iterations, max_concurrent_fetches, batch_size)
 
-    process_task.delay(task.id, max_iterations, max_concurrent_fetches, batch_size)
+        estimated_cost = workflow.estimated_dataset_cost
 
-    estimated_cost = workflow.estimated_dataset_cost
+        if estimated_cost == None:
+            estimated_cost = "Not available without iterations being completed"
 
-    if estimated_cost == None:
-        estimated_cost = "Not available without iterations being completed"
-
-    return JsonResponse(
-        {
-            "message": "Tasks creation initiated",
-            "task_id": task.id,
-            "workflow_id": workflow.workflow_id,
-            "expeced_cost": estimated_cost,
-        },
-        status=202,
-    )
+        return JsonResponse(
+            {
+                "message": "Tasks creation initiated",
+                "task_id": task.id,
+                "workflow_id": workflow.workflow_id,
+                "expeced_cost": estimated_cost,
+            },
+            status=202,
+        )
 
 
 @api_view(["GET"])
