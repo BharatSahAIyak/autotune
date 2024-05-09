@@ -18,7 +18,7 @@ max_iterations = int(getattr(settings, "MAX_ITERATIONS", 100))
 
 
 @shared_task(bind=True, max_retries=settings.CELERY_MAX_RETRIES, retry_backoff=True)
-def process_task(self, task_id):
+def process_task(self, task_id, max_iterations, max_concurrent_fetches, batch_size):
     task = Task.objects.get(id=task_id)
     workflow: Workflows = task.workflow
 
@@ -30,7 +30,11 @@ def process_task(self, task_id):
 
     Model, _ = create_pydantic_model(workflow.workflow_config.schema_example)
 
-    fetcher = DataFetcher()
+    fetcher = DataFetcher(
+        max_iterations=max_iterations,
+        max_concurrent_fetches=max_concurrent_fetches,
+        batch_size=batch_size,
+    )
     fetcher.generate_or_refine(
         workflow_id=workflow.workflow_id,
         total_examples=workflow.total_examples,

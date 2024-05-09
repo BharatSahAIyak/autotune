@@ -10,9 +10,11 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
+import logging
 import os
 from pathlib import Path
 
+import coloredlogs
 import dj_database_url
 from dotenv import load_dotenv
 
@@ -201,6 +203,20 @@ CORS_ORIGIN_WHITELIST = (
 
 CSRF_TRUSTED_ORIGINS = ["http://localhost:8000"]
 
+level_styles = {
+    "info": {"color": "green"},  # Info logs are green
+    "warning": {"color": "yellow"},
+    "error": {"color": "red"},
+    "critical": {"color": "red", "bold": True},  # Critical logs in bold red
+}
+
+coloredlogs.install(
+    level="INFO",
+    logger=logging.getLogger(),  # Root logger
+    fmt="%(levelname)s - %(name)s - %(asctime)s - %(message)s",
+    level_styles=level_styles,  # Apply custom level styles
+)
+
 
 LOGGING = {
     "version": 1,
@@ -208,10 +224,22 @@ LOGGING = {
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
+            "formatter": "colored",
         },
     },
-    "root": {
-        "handlers": ["console"],
-        "level": "INFO",
+    "formatters": {
+        "verbose": {
+            "format": "%(asctime)s [%(levelname)s] %(message)s (%(filename)s:%(lineno)s)",
+        },
+        "colored": {
+            "format": "%(asctime)s [%(levelname)s] %(message)s (%(filename)s:%(lineno)s)",
+        },
+    },
+    "loggers": {
+        "django.request": {
+            "handlers": ["console"],  # Add both file and console handlers
+            "level": "DEBUG",
+            "propagate": True,
+        },
     },
 }
