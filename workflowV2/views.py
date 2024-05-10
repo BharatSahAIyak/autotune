@@ -193,8 +193,36 @@ class GetDataView(UserIDMixin, APIView):
         workflow_id = data.get("workflow_id")
         task_id = data.get("task_id")
         user_id = request.META["user"].user_id
+
+        format = data.get("format")
+
+        if format and format != "csv" and format != "json":
+            return Response(
+                {"error": "Invalid format. supported formats are 'csv' or 'json'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         try:
-            if workflow_id:
+            if task_id:
+                task = get_object_or_404(Task, pk=task_id, workflow__user_id=user_id)
+                percentage = task.generated_samples / task.total_samples * 100
+                if percentage > 100:
+                    percentage = 100.0
+                return Response(
+                    {
+                        "workflow_id": str(task.workflow_id),
+                        "data": [
+                            {
+                                "task_id": task_id,
+                                "percentage": percentage,
+                                "links": self.get_dataset_links(task.dataset, format),
+                            }
+                        ],
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+            elif workflow_id:
 
                 workflow = get_object_or_404(
                     Workflows, workflow_id=workflow_id, user_id=user_id
@@ -207,36 +235,13 @@ class GetDataView(UserIDMixin, APIView):
                         percentage = 100.0
                     data.append(
                         {
-                            "task": {
-                                "task_id": task.id,
-                                "percentage": percentage,
-                                "links": self.get_dataset_links(task.dataset),
-                            }
+                            "task_id": task.id,
+                            "percentage": percentage,
+                            "links": self.get_dataset_links(task.dataset, format),
                         }
                     )
                 return Response(
                     {"workflow_id": workflow_id, "data": data},
-                    status=status.HTTP_200_OK,
-                )
-
-            elif task_id:
-                task = get_object_or_404(Task, pk=task_id, workflow__user_id=user_id)
-                percentage = task.generated_samples / task.total_samples * 100
-                if percentage > 100:
-                    percentage = 100.0
-                return Response(
-                    {
-                        "workflow_id": str(task.workflow_id),
-                        "data": [
-                            {
-                                "task": {
-                                    "task_id": task_id,
-                                    "percentage": percentage,
-                                    "links": self.get_dataset_links(task.dataset),
-                                }
-                            }
-                        ],
-                    },
                     status=status.HTTP_200_OK,
                 )
 
@@ -251,53 +256,67 @@ class GetDataView(UserIDMixin, APIView):
                 {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    def get_dataset_links(self, dataset: Dataset):
+    def get_dataset_links(self, dataset: Dataset, format: str):
         if dataset is None:
             return {}
         hf_api = HfApi(token=settings.HUGGING_FACE_TOKEN)
 
-        files = ["test.csv", "validation.csv", "train.csv"]
-        dataset_links = {}
-        for file in files:
-            if hf_api.file_exists(
-                repo_id=dataset.huggingface_id,
-                filename=file,
-                repo_type="dataset",
-                revision=dataset.latest_commit_hash,
-            ):
-                minio_file_name = f"{dataset.huggingface_id.split('/')[1]}/{dataset.latest_commit_hash}/{file}"
-                try:
-                    minio_client.stat_object(
-                        settings.MINIO_BUCKET_NAME, minio_file_name
-                    )
-                    print(
-                        f"File {minio_file_name} already exists in MinIO, generating presigned URL."
-                    )
-                except Exception:
-                    # If the file does not exist in MinIO, download and upload it
-                    file_path = hf_api.hf_hub_download(
-                        repo_id=dataset.huggingface_id,
-                        filename=file,
-                        repo_type="dataset",
-                        revision=dataset.latest_commit_hash,
-                    )
-                    df = pd.read_csv(file_path)
-                    buffer = io.BytesIO()
-                    df.to_csv(buffer, index=False)
-                    buffer.seek(0)
-                    minio_client.put_object(
+        files = ["test", "validation", "train"]
+        csv_links = {}
+        minio_file_name = f"{dataset.huggingface_id.split('/')[1]}/{dataset.latest_commit_hash}/data.json"
+        json_url = minio_client.presigned_get_object(
+            bucket_name=settings.MINIO_BUCKET_NAME,
+            object_name=minio_file_name,
+        )
+        if format is None or format == "csv":
+            for file in files:
+                if hf_api.file_exists(
+                    repo_id=dataset.huggingface_id,
+                    filename=f"{file}.csv",
+                    repo_type="dataset",
+                    revision=dataset.latest_commit_hash,
+                ):
+                    minio_file_name = f"{dataset.huggingface_id.split('/')[1]}/{dataset.latest_commit_hash}/{file}.csv"
+                    try:
+                        minio_client.stat_object(
+                            settings.MINIO_BUCKET_NAME, minio_file_name
+                        )
+                        print(
+                            f"File {minio_file_name} already exists in MinIO, generating presigned URL."
+                        )
+                    except Exception:
+                        # If the file does not exist in MinIO, download and upload it
+                        file_path = hf_api.hf_hub_download(
+                            repo_id=dataset.huggingface_id,
+                            filename=f"{file}.csv",
+                            repo_type="dataset",
+                            revision=dataset.latest_commit_hash,
+                        )
+                        df = pd.read_csv(file_path)
+                        df.drop(df.columns[0], axis=1)
+                        buffer = io.BytesIO()
+                        df.to_csv(buffer, index=False)
+                        buffer.seek(0)
+                        minio_client.put_object(
+                            bucket_name=settings.MINIO_BUCKET_NAME,
+                            object_name=minio_file_name,
+                            data=buffer,
+                            length=buffer.getbuffer().nbytes,
+                            content_type="application/csv",
+                        )
+                    presigned_url = minio_client.presigned_get_object(
                         bucket_name=settings.MINIO_BUCKET_NAME,
                         object_name=minio_file_name,
-                        data=buffer,
-                        length=buffer.getbuffer().nbytes,
-                        content_type="application/csv",
                     )
-                presigned_url = minio_client.presigned_get_object(
-                    bucket_name=settings.MINIO_BUCKET_NAME,
-                    object_name=minio_file_name,
-                )
-                dataset_links[file.split(".")[0]] = presigned_url
-        return dataset_links
+
+                    csv_links[file] = presigned_url
+
+        if format == "csv":
+            return {"csv": csv_links}
+        elif format == "json":
+            return {"json": json_url}
+        else:
+            return {"csv": csv_links, "json": json_url}
 
 
 class StatusView(UserIDMixin, APIView):
