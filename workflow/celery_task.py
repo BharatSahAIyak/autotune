@@ -34,7 +34,7 @@ def process_task(
     workflow: Workflows = task.workflow
     workflow.status = "GENERATION"
     workflow.save()
-    task.status = "Processing"
+    task.status = "PROCESSING"
     task.total_samples = workflow.total_examples
     task.save()
 
@@ -89,7 +89,7 @@ def process_task(
 
     workflow.status = "PUSHING_DATASET"
     workflow.save()
-    task.status = "Uploading"
+    task.status = "UPLOADING_DATASET"
     task.save()
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -109,7 +109,7 @@ def process_task(
 
     workflow.status = "IDLE"
     workflow.save()
-    task.status = "Completed"
+    task.status = "COMPLETED"
     task.dataset = dataset
     task.save()
 
@@ -208,8 +208,8 @@ def upload_datasets_to_hf(task_id, split, repo_id):
     data = []
     for example in examples:
         pairs = {}
-        pairs["example_id"] = example.example_id
-        pairs["prompt_id"] = example.prompt.id
+        pairs["example_id"] = str(example.example_id)
+        pairs["prompt_id"] = str(example.prompt.id)
 
         for key, value in example.text.items():
             pairs[key] = value

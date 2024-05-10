@@ -556,7 +556,7 @@ class GenerateTaskView(UserIDMixin, APIView):
 
         task = Task.objects.create(
             name=f"Batch Task for Workflow {workflow_id}",
-            status="Starting",
+            status="STARTING",
             workflow=workflow,
         )
 
