@@ -204,6 +204,8 @@ def upload_datasets_to_hf(task_id, split, repo_id):
     data = []
     for example in examples:
         pairs = {}
+        pairs["example_id"] = example.example_id
+        pairs["prompt_id"] = example.prompt.id
         for key, value in example.text.items():
             pairs[key] = value
         data.append(pairs)
@@ -224,7 +226,7 @@ def upload_datasets_to_hf(task_id, split, repo_id):
 
     uploaded_at = datetime.now()
     for i, split in enumerate(splits):
-        csv_data = split.to_csv()
+        csv_data = split.to_csv(index=False)
         file_data = csv_data.encode("utf-8")
         operation = CommitOperationAdd(f"{split_name[i]}.csv", file_data)
         commit_info = hf_api.create_commit(
