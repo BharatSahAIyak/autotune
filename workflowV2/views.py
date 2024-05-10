@@ -322,7 +322,7 @@ class GetDataView(UserIDMixin, APIView):
 class StatusView(UserIDMixin, APIView):
 
     def get(self, request):
-        workflow_id = request.query_params.get("workflow_id")
+        workflow_id = request.query_params.get("workflow-id")
         task_id = request.query_params.get("task-id")
 
         if workflow_id:
@@ -333,7 +333,7 @@ class StatusView(UserIDMixin, APIView):
                 percentage = task.generated_samples / task.total_samples * 100
                 if percentage > 100:
                     percentage = 100.0
-                dataset_links = GetDataView().get_dataset_links(task.dataset)
+                dataset_links = GetDataView().get_dataset_links(task.dataset, None)
                 tasks_status.append(
                     {
                         "task_id": task.id,
@@ -356,7 +356,7 @@ class StatusView(UserIDMixin, APIView):
         elif task_id:
             task = get_object_or_404(Task, id=task_id)
             workflow = task.workflow
-            dataset_links = GetDataView().get_dataset_links(task.dataset)
+            dataset_links = GetDataView().get_dataset_links(task.dataset, None)
 
             response_data = {
                 "workflow_id": workflow.workflow_id,
