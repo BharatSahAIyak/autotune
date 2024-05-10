@@ -34,6 +34,8 @@ class DataFetcher:
         workflow_config_id,
         llm_model,
         Model,
+        prompt,
+        prompt_id,
         refine=False,
         task_id=None,
         iteration=None,
@@ -41,7 +43,11 @@ class DataFetcher:
         if iteration is not None and iteration > self.max_iterations:
             logger.error("Max iterations reached")
             return
-        user_prompt, prompt_id = self.construct_user_prompt(workflow_id, refine)
+        user_prompt = self.construct_user_prompt(
+            workflow_id=workflow_id,
+            user_prompt=prompt,
+            refine=refine,
+        )
         logger.info(workflow_config_id)
         config = get_object_or_404(WorkflowConfig, id=workflow_config_id)
         try:
@@ -87,6 +93,8 @@ class DataFetcher:
                     workflow_config_id=workflow_config_id,
                     llm_model=llm_model,
                     Model=Model,
+                    prompt=prompt,
+                    prompt_id=prompt_id,
                     refine=refine,
                     task_id=task_id,
                     iteration=iteration + 1,
@@ -99,6 +107,8 @@ class DataFetcher:
                 workflow_config_id=workflow_config_id,
                 llm_model=llm_model,
                 Model=Model,
+                prompt=prompt,
+                prompt_id=prompt_id,
                 refine=True,
                 task_id=task_id,
                 iteration=iteration + 1,
@@ -133,15 +143,14 @@ class DataFetcher:
                 prompt_id=prompt_id,
             )
 
-    def construct_user_prompt(self, workflow_id, refine=False):
+    def construct_user_prompt(self, workflow_id, user_prompt, refine=False):
         """
         Construct the user prompt to send to the language model based on the workflow settings,
         whether to refine based on existing examples, and the specified number of samples to generate.
         """
         workflow = Workflows.objects.get(workflow_id=workflow_id)
         config = get_object_or_404(WorkflowConfig, id=workflow.workflow_config.id)
-        user_prompt_object: Prompt = workflow.latest_prompt
-        user_prompt = user_prompt_object.user_prompt
+
         user_prompt_template = config.user_prompt_template
 
         prompt = ""
@@ -169,7 +178,7 @@ class DataFetcher:
             post_text += f"Return the examples in a JSON object under an appropraite key following these pydantic models.\n\n {config.model_string}"
             prompt += f"{user_prompt}{post_text}"
 
-        return prompt, user_prompt_object.id
+        return prompt
 
     def call_llm_generate(
         self, user_prompt, workflow_config_id, llm_model, iteration=None, batch=None
@@ -186,7 +195,7 @@ class DataFetcher:
 
         system_prompt += f"\n{config.model_string}\n"
 
-        logger.info(f"system_prompt: {system_prompt}")
+        # logger.info(f"system_prompt: {system_prompt}")
         logger.info(f"user_prompt: {user_prompt}")
         if (
             llm_model == "gpt-4-turbo-preview"

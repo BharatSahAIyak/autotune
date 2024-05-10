@@ -11,6 +11,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from workflow.mixins import UserIDMixin
 from workflow.models import Dataset, Task, User, WorkflowConfig, Workflows
 from workflow.serializers import (
     PromptSerializer,
@@ -19,9 +20,8 @@ from workflow.serializers import (
     WorkflowSerializer,
 )
 from workflow.utils import create_pydantic_model
-from workflow.views import generate_task, iterate_workflow
+from workflow.views import GenerateTaskView, IterateWorkflowView
 
-from .mixins import UserIDMixin
 from .utils import minio_client
 
 
@@ -175,15 +175,15 @@ class WorkflowConfigCreateView(UserIDMixin, APIView):
 @method_decorator(csrf_exempt, name="dispatch")
 class WorkflowIterateView(UserIDMixin, APIView):
     def post(self, request, workflow_id):
-        http_request = request._request
-        return iterate_workflow(http_request, workflow_id)
+        iterator = IterateWorkflowView()
+        return iterator.post(request, workflow_id)
 
 
 @method_decorator(csrf_exempt, name="dispatch")
 class WorkflowGenerateView(UserIDMixin, APIView):
     def post(self, request, workflow_id):
-        http_request = request._request
-        return generate_task(http_request, workflow_id)
+        generator = GenerateTaskView()
+        return generator.post(request, workflow_id)
 
 
 @method_decorator(csrf_exempt, name="dispatch")
