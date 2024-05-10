@@ -1,7 +1,9 @@
+import ast
+import io
 import logging
 from decimal import Decimal, getcontext
 
-from django.conf import settings
+import pandas as pd
 from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
@@ -10,7 +12,6 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status
 from rest_framework.decorators import api_view
-from rest_framework.exceptions import ValidationError
 from rest_framework.generics import ListAPIView, UpdateAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -200,22 +201,24 @@ class IterateWorkflowView(UserIDMixin, APIView):
             Prompt.objects.create(user_prompt=user_prompt, workflow=workflow)
 
         total_examples = request.data.get("total_examples", 10)
-
         max_iterations = request.data.get("max_iterations", 50)
         max_concurrent_fetches = request.data.get("max_concurrent_fetches", 100)
         batch_size = request.data.get("batch_size", 5)
 
         fetcher = DataFetcher(
-            max_iterations=max_iterations,
-            max_concurrent_fetches=max_concurrent_fetches,
-            batch_size=batch_size,
+            max_iterations=int(max_iterations),
+            max_concurrent_fetches=int(max_concurrent_fetches),
+            batch_size=int(batch_size),
         )
+        prompt: Prompt = workflow.latest_prompt
         fetcher.generate_or_refine(
             workflow_id=workflow.workflow_id,
             total_examples=total_examples,
             workflow_config_id=workflow.workflow_config.id,
             llm_model=workflow.llm_model,
             Model=Model,
+            prompt=prompt.user_prompt,
+            prompt_id=prompt.id,
             refine=examples_exist,
             iteration=1,
         )
@@ -470,20 +473,86 @@ class TaskView(APIView):
 @method_decorator(csrf_exempt, name="dispatch")
 class GenerateTaskView(UserIDMixin, APIView):
     def post(self, request, workflow_id, *args, **kwargs):
-
         user_id = request.META["user"].user_id
 
         workflow = get_object_or_404(
             Workflows, workflow_id=workflow_id, user_id=user_id
         )
 
-        if request.data.get("total_examples"):
-            workflow.total_examples = request.data.get("total_examples")
+        uploaded_files = request.FILES.getlist("file")
+        prompts_str = request.data.get("prompts")
+
+        prompts = []
+        total_examples = request.data.get("total_examples")
+        batch_size = request.data.get("batch_size")
+
+        if uploaded_files and prompts_str:
+            return JsonResponse(
+                {
+                    "error": "Both prompts and file uploads are not allowed. Please provide either prompts or a file."
+                },
+                status=400,
+            )
+        if len(uploaded_files) > 0:
+            if not request.data.get("example_per_prompt"):
+                return JsonResponse(
+                    {"error": "example_per_prompt is required when uploading files."},
+                    status=400,
+                )
+            total_examples = request.data.get("example_per_prompt")
+            batch_size = total_examples
+
+            series = []
+            for file in uploaded_files:
+                if not file.name.lower().endswith(".csv"):
+                    return JsonResponse(
+                        {
+                            "error": f"Invalid file extension for {file.name}. Only .csv files are allowed."
+                        },
+                        status=400,
+                    )
+
+                try:
+                    csv_file = io.BytesIO(file.read())
+                    df = pd.read_csv(csv_file)
+                    if "prompts" in df:
+                        series.append(df["prompts"])
+                    else:
+                        return JsonResponse(
+                            {"error": " `prompts` column not found in the CSV file"},
+                            status=400,
+                        )
+                except Exception as e:
+                    return JsonResponse(
+                        {"error": f"Error reading CSV file: {str(e)}"}, status=400
+                    )
+            prompts = pd.concat(series, ignore_index=True).tolist()
+
+        if prompts_str:
+            if not request.data.get("example_per_prompt"):
+                return JsonResponse(
+                    {"error": "example_per_prompt is required when providing prompts."},
+                    status=400,
+                )
+            total_examples = request.data.get("example_per_prompt")
+            batch_size = total_examples
+
+            try:
+                prompts = ast.literal_eval(prompts_str)
+                if not isinstance(prompts, list):
+                    raise ValueError("Prompts is not a valid list.")
+            except (ValueError, SyntaxError) as e:
+                return JsonResponse(
+                    {"error": f"Invalid prompts format: {str(e)}"}, status=400
+                )
+
+        if total_examples:
+            workflow.total_examples = total_examples
             workflow.save()
 
         max_iterations = request.data.get("max_iterations", 50)
         max_concurrent_fetches = request.data.get("max_concurrent_fetches", 100)
-        batch_size = request.data.get("batch_size", 5)
+        batch_size = batch_size if batch_size else 5
 
         task = Task.objects.create(
             name=f"Batch Task for Workflow {workflow_id}",
@@ -491,7 +560,13 @@ class GenerateTaskView(UserIDMixin, APIView):
             workflow=workflow,
         )
 
-        process_task.delay(task.id, max_iterations, max_concurrent_fetches, batch_size)
+        process_task.delay(
+            task.id,
+            int(max_iterations),
+            int(max_concurrent_fetches),
+            int(batch_size),
+            prompts,
+        )
 
         estimated_cost = workflow.estimated_dataset_cost
 
