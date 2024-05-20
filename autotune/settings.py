@@ -10,9 +10,11 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
+import logging
 import os
 from pathlib import Path
 
+import coloredlogs
 import dj_database_url
 from dotenv import load_dotenv
 
@@ -59,9 +61,15 @@ HUGGING_FACE_TOKEN = os.getenv("HUGGING_FACE_TOKEN")
 
 HUGGING_FACE_USERNAME = os.getenv("HUGGING_FACE_USERNAME")
 
-MAX_CONCURRENT_FETCHES = os.getenv("MAX_CONCURRENT_FETCHES")
+MINIO_BASE_URL = os.getenv("MINIO_BASE_URL")
 
-MAX_ITERATIONS = os.getenv("MAX_ITERATIONS")
+MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY")
+
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY")
+
+MINIO_SECURE_CONN = os.getenv("MINIO_SECURE_CONN") == "True"
+
+MINIO_BUCKET_NAME = os.getenv("MINIO_BUCKET")
 
 # Application definition
 
@@ -75,6 +83,7 @@ INSTALLED_APPS = [
     "drf_yasg",
     "rest_framework",
     "workflow",
+    "workflowV2",
 ]
 
 MIDDLEWARE = [
@@ -171,7 +180,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": "redis://127.0.0.1:6379/1",
+        "LOCATION": REDIS_URL,
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
         },
@@ -190,6 +199,20 @@ CORS_ORIGIN_WHITELIST = (
 
 CSRF_TRUSTED_ORIGINS = ["http://localhost:8000"]
 
+level_styles = {
+    "info": {"color": "green"},  # Info logs are green
+    "warning": {"color": "yellow"},
+    "error": {"color": "red"},
+    "critical": {"color": "red", "bold": True},  # Critical logs in bold red
+}
+
+coloredlogs.install(
+    level="INFO",
+    logger=logging.getLogger(),  # Root logger
+    fmt="%(levelname)s - %(name)s - %(asctime)s - %(message)s",
+    level_styles=level_styles,  # Apply custom level styles
+)
+
 
 LOGGING = {
     "version": 1,
@@ -197,10 +220,22 @@ LOGGING = {
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
+            "formatter": "colored",
         },
     },
-    "root": {
-        "handlers": ["console"],
-        "level": "INFO",
+    "formatters": {
+        "verbose": {
+            "format": "%(asctime)s [%(levelname)s] %(message)s (%(filename)s:%(lineno)s)",
+        },
+        "colored": {
+            "format": "%(asctime)s [%(levelname)s] %(message)s (%(filename)s:%(lineno)s)",
+        },
+    },
+    "loggers": {
+        "django.request": {
+            "handlers": ["console"],  # Add both file and console handlers
+            "level": "DEBUG",
+            "propagate": True,
+        },
     },
 }

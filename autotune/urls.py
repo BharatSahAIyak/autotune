@@ -49,6 +49,7 @@ urlpatterns = [
         name="schema-swagger-ui",
     ),
     path("redoc/", schema_view.with_ui("redoc", cache_timeout=0), name="schema-redoc"),
-    path("workflow/", include("workflow.urls")),
     path("task/status/<uuid:task_id>/", TaskView.as_view(), name="task-status"),
+    path("v1/workflow/", include(("workflow.urls", "workflow"), namespace="v1")),
+    path("v2/workflow/", include(("workflowV2.urls", "workflowV2"), namespace="v2")),
 ]
