@@ -1,15 +1,13 @@
-from django.urls import path
+from django.urls import include, path
+from rest_framework.routers import DefaultRouter
 
 from . import views
 from .views import (
     ExamplesView,
-    GenerateTaskView,
-    IterateWorkflowView,
     PromptViewSet,
-    SingleWorkflowView,
     WorkflowConfigView,
+    WorkflowDetailView,
     WorkflowDuplicateView,
-    WorkflowListView,
     WorkflowSearchView,
     WorkflowStatusView,
     WorkflowUpdateView,
@@ -18,18 +16,12 @@ from .views import (
 
 urlpatterns = [
     # General routes
-    path("", WorkflowListView.as_view(), name="workflow-list"),
+    path("", views.index, name="index"),
     path("create/", create_workflow_with_prompt, name="create_workflow"),
     # Workflow-related routes
+    path("<uuid:workflow_id>/", WorkflowDetailView.as_view(), name="workflow-detail"),
     path(
-        "<uuid:workflow_id>/",
-        SingleWorkflowView.as_view(),
-        name="workflow-detail",
-    ),
-    path(
-        "iterate/<uuid:workflow_id>/",
-        IterateWorkflowView.as_view(),
-        name="iterate-workflow",
+        "iterate/<uuid:workflow_id>/", views.iterate_workflow, name="iterate-workflow"
     ),
     path("prompt/<uuid:workflow_id>/", PromptViewSet.as_view(), name="prompt"),
     path(
@@ -47,9 +39,7 @@ urlpatterns = [
         WorkflowStatusView.as_view(),
         name="workflow-status",
     ),
-    path(
-        "generate/<uuid:workflow_id>/", GenerateTaskView.as_view(), name="generate-task"
-    ),
+    path("generate/<uuid:workflow_id>/", views.generate_task, name="generate-task"),
     # Examples routes
     path("examples/", ExamplesView.as_view(), name="examples"),
     path(

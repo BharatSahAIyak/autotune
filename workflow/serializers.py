@@ -23,39 +23,26 @@ class DatasetSerializer(serializers.ModelSerializer):
         fields = ("id", "name", "is_locally_cached")
 
 
-class PromptSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Prompt
-        fields = (
-            "id",
-            "created_at",
-            "updated_at",
-            "user_prompt",
-            "system_prompt",
-            "source",
-            "workflow",
-        )
-
-
 class ExampleSerializer(serializers.ModelSerializer):
     example_id = serializers.UUIDField(required=False)
-    prompt = PromptSerializer(read_only=True)
-    text = serializers.JSONField(required=True)
-    label = serializers.CharField(required=True)
-    reason = serializers.CharField(required=True)
 
     class Meta:
         model = Examples
-        fields = ("example_id", "prompt", "text", "label", "reason")
+        fields = ("example_id", "text", "label", "reason")
+
+
+class PromptSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Prompt
+        fields = "__all__"
 
 
 class WorkflowDetailSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     model = MLModelSerializer(read_only=True)
     dataset = DatasetSerializer(read_only=True)
-    latest_prompt = PromptSerializer(read_only=True)
-    prompts = PromptSerializer(many=True, read_only=True)
-    examples = ExampleSerializer(many=True, read_only=True)
+    prompt = PromptSerializer(read_only=True)
+    examples = ExampleSerializer(many=True, read_only=True, source="examples")
     workflow_config = serializers.PrimaryKeyRelatedField(
         queryset=WorkflowConfig.objects.all()
     )
@@ -69,14 +56,12 @@ class WorkflowDetailSerializer(serializers.ModelSerializer):
             "split",
             "llm_model",
             "cost",
-            "estimated_dataset_cost",
             "tags",
             "user",
             "dataset",
             "model",
             "examples",
-            "latest_prompt",  # Ensures details of the latest prompt are shown
-            "prompts",  # Lists all associated prompts
+            "prompt",
             "workflow_config",
         )
 
@@ -95,16 +80,12 @@ class WorkflowSerializer(serializers.ModelSerializer):
             "total_examples",
             "split",
             "llm_model",
+            "cost",
             "tags",
             "user",
             "examples",
-            "latest_prompt",
             "workflow_config",
         )
-        extra_kwargs = {
-            "cost": {"default": 0},
-            "estimated_dataset_cost": {"default": "NULL till first iteration"},
-        }
 
     def create(self, validated_data):
         examples_data = validated_data.pop("examples", [])
@@ -124,8 +105,14 @@ class WorkflowConfigSerializer(serializers.ModelSerializer):
             "name",
             "system_prompt",
             "user_prompt_template",
-            "schema_example",
-            "temperature",
-            "fields",
-            "model_string",
+            "json_schema",
+            "parameters",
         )
+
+    def validate_json_schema(self, value):
+        try:
+            Validator.check_schema(value)
+        except Exception as e:
+            raise serializers.ValidationError(f"Invalid JSON schema: {str(e)}")
+
+        return value

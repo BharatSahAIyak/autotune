@@ -45,8 +45,6 @@ psycopg_binary="^3.1.18"
 gevent="^24.2.1"
 dj_database_url="^1.0.3"
 psycopg2-binary="^2.9.9"
-datamodel-code-generator="^0.25.6"
-minio="^7.2.7"
 
 [build-system]
 requires = ["poetry-core"]

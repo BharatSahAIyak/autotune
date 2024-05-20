@@ -1,39 +1,28 @@
-import ast
-import io
 import logging
-from decimal import Decimal, getcontext
 
-import pandas as pd
 from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
-from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status
 from rest_framework.decorators import api_view
-from rest_framework.generics import ListAPIView, UpdateAPIView
+from rest_framework.exceptions import ValidationError
+from rest_framework.generics import ListAPIView, RetrieveAPIView, UpdateAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .celery_task import process_task
-from .dataFetcher import DataFetcher
-from .mixins import UserIDMixin
-from .models import Examples, Prompt, Task, WorkflowConfig, Workflows
+from .models import Examples, Task, WorkflowConfig, Workflows
 from .serializers import (
     ExampleSerializer,
     PromptSerializer,
     UserSerializer,
     WorkflowConfigSerializer,
-    WorkflowDetailSerializer,
     WorkflowSerializer,
 )
-from .utils import (
-    create_pydantic_model,
-    dehydrate_cache,
-    get_model_cost,
-    validate_and_save_examples,
-)
+from .task import DataFetcher
+from .utils import dehydrate_cache
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +108,7 @@ def create_workflow_with_prompt(request):
             workflow = workflow_serializer.save()
 
             prompt_data = {
-                "user_prompt": request.data.get("user_prompt", ""),
+                "user": request.data.get("user_prompt", ""),
                 "workflow": workflow.pk,
             }
 
@@ -143,8 +132,8 @@ def create_workflow_with_prompt(request):
     )
 
 
-@method_decorator(csrf_exempt, name="dispatch")
-class IterateWorkflowView(UserIDMixin, APIView):
+@api_view(["POST"])
+def iterate_workflow(request, workflow_id):
     """
     Iterates over a workflow by either adding new examples or refining existing ones based on the provided data.
     This operation can generate or refine questions and answers based on the examples associated with the workflow.
@@ -171,158 +160,129 @@ class IterateWorkflowView(UserIDMixin, APIView):
     Returns:
     - A response object with the outcome of the iteration process. The response structure and data depend on the json schema defined in the configfunction.
     """
+    workflow = get_object_or_404(Workflows, pk=workflow_id)
+    workflow.status = "ITERATION"
+    workflow.save()
+    examples_data = request.data.get("examples", [])
 
-    def post(self, request, workflow_id, *args, **kwargs):
-        user_id = request.META["user"].user_id
+    examples_exist = (
+        Examples.objects.filter(workflow_id=workflow_id, label__isnull=False).exists()
+        or len(examples_data) > 0
+    )
 
-        workflow = get_object_or_404(
-            Workflows, workflow_id=workflow_id, user_id=user_id
-        )
-        workflow.status = "ITERATION"
-        workflow.save()
-        examples_data = request.data.get("examples", [])
+    for example_data in examples_data:
+        serializer = ExampleSerializer(data=example_data)
 
-        examples_exist = (
-            Examples.objects.filter(
-                workflow_id=workflow_id, label__isnull=False
-            ).exists()
-            or len(examples_data) > 0
-        )
+        if serializer.is_valid():
+            example_id = serializer.validated_data.get("example_id", None)
+            text = serializer.validated_data["text"]
+            label = serializer.validated_data["label"]
+            reason = serializer.validated_data["reason"]
 
-        Model, _ = create_pydantic_model(workflow.workflow_config.schema_example)
+            if example_id:
+                example, created = Examples.objects.get_or_create(
+                    example_id=example_id,
+                    defaults={
+                        "workflow": workflow,
+                        "text": text,
+                        "label": label,
+                        "reason": reason,
+                    },
+                )
 
-        success, result = validate_and_save_examples(examples_data, Model, workflow)
+                if not created:
+                    example.text = text
+                    example.label = label
+                    example.reason = reason
+                    example.save()
+            else:
+                Examples.objects.create(
+                    workflow=workflow,
+                    text=text,
+                    label=label,
+                    reason=reason,
+                )
 
-        if not success:
-            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        user_prompt = request.data.get("user_prompt")
-        if user_prompt:
-            Prompt.objects.create(user_prompt=user_prompt, workflow=workflow)
+    fetcher = DataFetcher()
+    response = fetcher.generate_or_refine(
+        workflow_id=workflow.workflow_id,
+        total_examples=workflow.total_examples,
+        workflow_config_id=workflow.workflow_config.id,
+        llm_model=workflow.llm_model,
+        refine=examples_exist,
+        iteration=1,
+    )
+    workflow.status = "IDLE"
+    workflow.save()
+    return Response(response)
 
-        total_examples = request.data.get("total_examples", 10)
-        max_iterations = request.data.get("max_iterations", 50)
-        max_concurrent_fetches = request.data.get("max_concurrent_fetches", 100)
-        batch_size = request.data.get("batch_size", 5)
 
-        fetcher = DataFetcher(
-            max_iterations=int(max_iterations),
-            max_concurrent_fetches=int(max_concurrent_fetches),
-            batch_size=int(batch_size),
-        )
-        prompt: Prompt = workflow.latest_prompt
-        fetcher.generate_or_refine(
-            workflow_id=workflow.workflow_id,
-            total_examples=total_examples,
-            workflow_config_id=workflow.workflow_config.id,
-            llm_model=workflow.llm_model,
-            Model=Model,
-            prompt=prompt.user_prompt,
-            prompt_id=prompt.id,
-            refine=examples_exist,
-            iteration=1,
-        )
+class WorkflowDetailView(RetrieveAPIView):
+    """
+    Retrieves details of a specific workflow by its unique 'workflow_id'.
 
-        costs = get_model_cost(workflow.llm_model)
+    Args:
+        - workflow_id (UUID): The unique identifier of the workflow to retrieve.
+          It is part of the URL pattern and should be provided in the request URL.
 
-        getcontext().prec = 6
-
-        input_cost = Decimal(fetcher.input_tokens * costs["input"]) / Decimal(1000)
-        output_cost = Decimal(fetcher.output_tokens * costs["output"]) / Decimal(1000)
-
-        iteration_cost = input_cost + output_cost
-        iteration_cost = iteration_cost.quantize(Decimal("0.0001"))
-        workflow.cost += iteration_cost
-        workflow.cost = workflow.cost.quantize(Decimal("0.0001"))
-
-        total_batches = max(
-            1,
-            (workflow.total_examples + batch_size - 1) // batch_size,
-        )
-
-        workflow.estimated_dataset_cost = Decimal(
-            Decimal(1.25) * iteration_cost * total_batches
-        )
-
-        workflow.estimated_dataset_cost = workflow.estimated_dataset_cost.quantize(
-            Decimal("0.0001")
-        )
-
-        workflow.status = "IDLE"
-        workflow.save()
-        return Response(
-            {
-                "workflow_cost": f"${workflow.cost}",
-                "iteration_cost": f"${iteration_cost}",
-                "estimated_dataset_cost": f"${workflow.estimated_dataset_cost}",
-                "data": fetcher.examples,
+    Returns:
+        {
+        "workflow": {
+            "workflow_id": "123e4567-e89b-12d3-a456-426614174000",
+            "workflow_name": "Data Analysis Workflow",
+            "total_examples": 1000,
+            "split": [70, 20, 10],
+            "llm_model": "gpt-4-0125-preview",
+            "cost": 200,
+            "tags": ["data analysis", "machine learning"],
+            "user": "uuid-of-the-user",
+            "created_at": "2024-03-07T12:00:00Z",
+            "updated_at": "2024-03-07T12:00:00Z",
+            "prompt": {
+                "id": "789e4567-e89b-12d3-a456-426614174999",
+                "text": "Generate insights from the given dataset.",
+                "parameters": {
+                    "max_tokens": 150,
+                    "temperature": 0.5
+                },
+                "created_at": "2024-03-07T12:00:00Z",
+                "updated_at": "2024-03-07T12:00:00Z",
+                "workflow": "123e4567-e89b-12d3-a456-426614174000"
             }
-        )
+        }
+    }
+    """
 
-
-class WorkflowListView(APIView):
-    def get(self, request, *args, **kwargs):
-        workflows = Workflows.objects.all()
-        serializer = WorkflowDetailSerializer(workflows, many=True)
-        return Response(serializer.data)
-
-    def post(self, request, *args, **kwargs):
-        serializer = WorkflowSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-class SingleWorkflowView(APIView):
-    def get(self, request, workflow_id, *args, **kwargs):
-        workflow = get_object_or_404(Workflows, workflow_id=workflow_id)
-        serializer = WorkflowDetailSerializer(workflow)
-        return Response(serializer.data)
-
-    def put(self, request, workflow_id, *args, **kwargs):
-        workflow = get_object_or_404(Workflows, workflow_id=workflow_id)
-        serializer = WorkflowSerializer(workflow, data=request.data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    def delete(self, request, workflow_id, *args, **kwargs):
-        workflow = get_object_or_404(Workflows, workflow_id=workflow_id)
-        workflow.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+    queryset = Workflows.objects.all()
+    serializer_class = WorkflowSerializer
+    lookup_field = "workflow_id"
 
 
 class PromptViewSet(APIView):
+
     def get(self, request, workflow_id):
         workflow = get_object_or_404(Workflows, pk=workflow_id)
-        prompts = (
-            workflow.prompts.all()
-        )  # Get all prompts associated with this workflow
-        return Response(PromptSerializer(prompts, many=True).data)
+        prompt = workflow.prompt
+        return Response(PromptSerializer(prompt).data)
 
-    def post(self, request, workflow_id):
+    def put(self, request, workflow_id):
         workflow = get_object_or_404(Workflows, pk=workflow_id)
-        if not request.data.get("user_prompt"):
-            return Response(
-                {"message": "user_prompt is required"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        prompt_data = {
-            "user_prompt": request.data.get("user_prompt"),
-            "workflow": workflow.pk,
-        }
-        serializer = PromptSerializer(data=prompt_data)
-        if serializer.is_valid():
-            prompt = serializer.save(workflow=workflow)
+        prompt = workflow.prompt
 
-            # Update the latest_prompt field on the workflow to this new prompt
-            workflow.latest_prompt = prompt
-            workflow.save()
+        user_prompt = request.data.get("user")
+        source = request.data.get("source")
 
-            return Response(serializer.data, status=201)
-        return Response(serializer.errors, status=400)
+        if user_prompt is not None:
+            prompt.user = user_prompt
+
+        if source is not None:
+            prompt.source = source
+
+        prompt.save()
+        return Response(PromptSerializer(prompt).data)
 
 
 class ExamplesView(APIView):
@@ -342,12 +302,32 @@ class ExamplesView(APIView):
         workflow = get_object_or_404(Workflows, pk=workflow_id)
         examples_data = request.data.get("examples", [])
 
-        Model, _ = create_pydantic_model(workflow.workflow_config.schema_example)
+        for example_data in examples_data:
+            serializer = ExampleSerializer(data=example_data)
+            if serializer.is_valid():
+                example_id = serializer.validated_data.get("example_id")
 
-        success, result = validate_and_save_examples(examples_data, Model, workflow)
+                if example_id:
+                    try:
+                        example = Examples.objects.get(example_id=example_id)
+                        example.text = serializer.validated_data["text"]
+                        example.label = serializer.validated_data["label"]
+                        example.reason = serializer.validated_data["reason"]
+                        example.save()
+                    except Examples.DoesNotExist:
+                        raise ValidationError(
+                            f"Example with ID {example_id} does not exist."
+                        )
+                else:
+                    Examples.objects.create(
+                        workflow=workflow,
+                        text=serializer.validated_data["text"],
+                        label=serializer.validated_data["label"],
+                        reason=serializer.validated_data["reason"],
+                    )
 
-        if not success:
-            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         return Response({"message": "Examples updated successfully"}, status=201)
 
@@ -466,122 +446,26 @@ class TaskView(APIView):
 
     def get(self, request, task_id):
         task = get_object_or_404(Task, pk=task_id)
-        percentage = task.generated_samples / task.total_samples
-        return Response({"status": task.status, "percentage": percentage})
+        return Response({"status": task.status})
 
 
-@method_decorator(csrf_exempt, name="dispatch")
-class GenerateTaskView(UserIDMixin, APIView):
-    def post(self, request, workflow_id, *args, **kwargs):
-        user_id = request.META["user"].user_id
+@api_view(["PUT"])
+def generate_task(request, workflow_id, *args, **kwargs):
+    try:
+        workflow = Workflows.objects.get(workflow_id=workflow_id)
+    except Workflows.DoesNotExist:
+        return JsonResponse({"error": "Workflow not found"}, status=404)
+    task = Task.objects.create(
+        name=f"Batch Task for Workflow {workflow_id}",
+        status="Starting",
+        workflow=workflow,
+    )
 
-        workflow = get_object_or_404(
-            Workflows, workflow_id=workflow_id, user_id=user_id
-        )
+    process_task.delay(task.id)
 
-        uploaded_files = request.FILES.getlist("file")
-        prompts_str = request.data.get("prompts")
-
-        prompts = []
-        total_examples = request.data.get("total_examples")
-        batch_size = request.data.get("batch_size")
-
-        if uploaded_files and prompts_str:
-            return JsonResponse(
-                {
-                    "error": "Both prompts and file uploads are not allowed. Please provide either prompts or a file."
-                },
-                status=400,
-            )
-        if len(uploaded_files) > 0:
-            if not request.data.get("example_per_prompt"):
-                return JsonResponse(
-                    {"error": "example_per_prompt is required when uploading files."},
-                    status=400,
-                )
-            total_examples = request.data.get("example_per_prompt")
-            batch_size = total_examples
-
-            series = []
-            for file in uploaded_files:
-                if not file.name.lower().endswith(".csv"):
-                    return JsonResponse(
-                        {
-                            "error": f"Invalid file extension for {file.name}. Only .csv files are allowed."
-                        },
-                        status=400,
-                    )
-
-                try:
-                    csv_file = io.BytesIO(file.read())
-                    df = pd.read_csv(csv_file)
-                    if "prompts" in df:
-                        series.append(df["prompts"])
-                    else:
-                        return JsonResponse(
-                            {"error": " `prompts` column not found in the CSV file"},
-                            status=400,
-                        )
-                except Exception as e:
-                    return JsonResponse(
-                        {"error": f"Error reading CSV file: {str(e)}"}, status=400
-                    )
-            prompts = pd.concat(series, ignore_index=True).tolist()
-
-        if prompts_str:
-            if not request.data.get("example_per_prompt"):
-                return JsonResponse(
-                    {"error": "example_per_prompt is required when providing prompts."},
-                    status=400,
-                )
-            total_examples = request.data.get("example_per_prompt")
-            batch_size = total_examples
-
-            try:
-                prompts = ast.literal_eval(prompts_str)
-                if not isinstance(prompts, list):
-                    raise ValueError("Prompts is not a valid list.")
-            except (ValueError, SyntaxError) as e:
-                return JsonResponse(
-                    {"error": f"Invalid prompts format: {str(e)}"}, status=400
-                )
-
-        if total_examples:
-            workflow.total_examples = total_examples
-            workflow.save()
-
-        max_iterations = request.data.get("max_iterations", 50)
-        max_concurrent_fetches = request.data.get("max_concurrent_fetches", 100)
-        batch_size = batch_size if batch_size else 5
-
-        task = Task.objects.create(
-            name=f"Batch Task for Workflow {workflow_id}",
-            status="STARTING",
-            workflow=workflow,
-        )
-
-        process_task.delay(
-            task.id,
-            int(max_iterations),
-            int(max_concurrent_fetches),
-            int(batch_size),
-            prompts,
-        )
-
-        estimated_cost = workflow.estimated_dataset_cost
-
-        if estimated_cost == None:
-            estimated_cost = "Not available without iterations being completed"
-
-        return JsonResponse(
-            {
-                "message": "Tasks creation initiated",
-                "task_id": task.id,
-                "workflow_id": workflow.workflow_id,
-                "expeced_cost": estimated_cost,
-            },
-            status=202,
-        )
+    return JsonResponse(
+        {"message": "Tasks creation initiated", "task_id": task.id}, status=202
+    )
 
 
 @api_view(["GET"])
@@ -612,26 +496,7 @@ class WorkflowConfigView(APIView):
         """
         Create a new WorkflowConfig.
         """
-        if request.data.get("schema_example") is None:
-            return Response(
-                {"message": "Schema Example is required!"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        Model, model_string = create_pydantic_model(request.data.get("schema_example"))
-        field_names = list(Model.__fields__.keys())
-        field_info = list(Model.__fields__.values())
-
-        fields = []
-
-        for i in range(len(field_names)):
-            fields.append({field_names[i]: field_info[i].annotation.__name__})
-
-        data = request.data
-
-        data["model_string"] = model_string
-        data["fields"] = fields
-
-        serializer = WorkflowConfigSerializer(data=data)
+        serializer = WorkflowConfigSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
             return Response(
