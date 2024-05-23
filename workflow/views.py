@@ -684,10 +684,12 @@ def add_user(request):
 
 class TrainModelView(APIView):
 
-    def post(self, request, workflow_id, *args, **kwargs):
+    def post(self, request, *args, **kwargs):
         serializer = ModelDataSerializer(data=request.data)
         if serializer.is_valid():
             data = serializer.validated_data
+            data["workflow_id"] = str(data["workflow_id"])
+            workflow_id = data["workflow_id"]
 
             task = Task.objects.create(
                 name=f"Training Workflow {workflow_id}",
@@ -695,7 +697,7 @@ class TrainModelView(APIView):
                 workflow_id=workflow_id,
             )
 
-            train.apply_async(args=[data, workflow_id], task_id=str(task.id))
+            train.apply_async(args=[data], task_id=str(task.id))
 
             return Response({"taskId": task.id}, status=status.HTTP_202_ACCEPTED)
 

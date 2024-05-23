@@ -44,7 +44,7 @@ class Tasks(ABC):
             self.Trainer,
             model=self.model,
             train_dataset=self.tokenized_dataset["train"],
-            eval_dataset=self.tokenized_dataset["validation"],
+            eval_dataset=self.tokenized_dataset["test"],
             tokenizer=self.tokenizer,
             data_collator=self.data_collator,
             compute_metrics=self.compute_metrics,
@@ -63,6 +63,10 @@ class Tasks(ABC):
         pass
 
 
+# needs train and validation in the dataset
+# needs 'class'/'label' column in the dataset
+
+
 class TextClassification(Tasks):
     def __init__(self, model_name: str, dataset: Dataset, version: str):
         super().__init__("text_classification", model_name, dataset, version)
@@ -70,7 +74,7 @@ class TextClassification(Tasks):
         self.onnx = ORTModelForSequenceClassification
 
     def _load_model_requirements(self):
-        num_labels = len(self.dataset["train"].unique("label"))
+        num_labels = len(self.dataset["train"].unique("class"))
         self.model = AutoModelForSequenceClassification.from_pretrained(
             self.model_name, num_labels=num_labels
         )
@@ -85,7 +89,7 @@ class TextClassification(Tasks):
         self.data_collator = DataCollatorWithPadding(tokenizer=self.tokenizer)
 
     def __preprocess_function(self, examples):
-        return self.tokenizer(examples["text"], truncation=True)
+        return self.tokenizer(examples["sentence"], truncation=True)
 
     def compute_metrics(self, eval_pred):
         predictions, labels = eval_pred
