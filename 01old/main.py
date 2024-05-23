@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security.api_key import APIKey, APIKeyHeader
 from huggingface_hub import HfApi
 
-from old.models import (
+from models import (
     ChatViewRequest,
     GenerationAndCommitRequest,
     GenerationAndUpdateRequest,
@@ -22,7 +22,7 @@ from old.models import (
     QuestionCreationRequest,
     QuestionUpdationRequest,
 )
-from old.tasks import (
+from tasks import (
     generate_and_push_data,
     generate_and_push_questions,
     generate_and_update_data,

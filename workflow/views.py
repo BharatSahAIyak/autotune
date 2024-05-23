@@ -16,18 +16,20 @@ from rest_framework.generics import ListAPIView, UpdateAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .celery_task import process_task
 from .dataFetcher import DataFetcher
+from .generate import process_task
 from .mixins import UserIDMixin
 from .models import Examples, Prompt, Task, WorkflowConfig, Workflows
 from .serializers import (
     ExampleSerializer,
+    ModelDataSerializer,
     PromptSerializer,
     UserSerializer,
     WorkflowConfigSerializer,
     WorkflowDetailSerializer,
     WorkflowSerializer,
 )
+from .train import train
 from .utils import (
     create_pydantic_model,
     dehydrate_cache,
@@ -680,7 +682,21 @@ def add_user(request):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-@api_view(["POST"])
-def train(request):
-    # TBD
-    return JsonResponse({"message": "hey"})
+class TrainModelView(APIView):
+
+    def post(self, request, workflow_id, *args, **kwargs):
+        serializer = ModelDataSerializer(data=request.data)
+        if serializer.is_valid():
+            data = serializer.validated_data
+
+            task = Task.objects.create(
+                name=f"Training Workflow {workflow_id}",
+                status="STARTING",
+                workflow_id=workflow_id,
+            )
+
+            train.apply_async(args=[data, workflow_id], task_id=str(task.id))
+
+            return Response({"taskId": task.id}, status=status.HTTP_202_ACCEPTED)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

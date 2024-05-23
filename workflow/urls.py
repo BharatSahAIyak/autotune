@@ -7,6 +7,7 @@ from .views import (
     IterateWorkflowView,
     PromptViewSet,
     SingleWorkflowView,
+    TrainModelView,
     WorkflowConfigView,
     WorkflowDuplicateView,
     WorkflowListView,
@@ -72,4 +73,5 @@ urlpatterns = [
         name="dehydrate-cache",
     ),
     path("user/", views.add_user, name="add-user"),
+    path("train", TrainModelView.as_view(), name="train"),
 ]

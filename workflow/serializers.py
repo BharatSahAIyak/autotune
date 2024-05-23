@@ -129,3 +129,35 @@ class WorkflowConfigSerializer(serializers.ModelSerializer):
             "fields",
             "model_string",
         )
+
+
+class ModelDataSerializer(serializers.Serializer):
+    dataset = serializers.CharField(
+        max_length=255, required=False, allow_blank=True
+    )  # needs to be a valid dataset on huggingface
+    model = serializers.CharField(
+        max_length=255
+    )  # needs to be a vlid model on huggingface
+    epochs = serializers.FloatField(required=False, default=1)
+    save_path = serializers.CharField(max_length=255)
+    task = serializers.ChoiceField(choices=["text_classification", "seq2seq"])
+    version = serializers.CharField(max_length=50, required=False, default="main")
+    workflow_id = serializers.UUIDField(required=False, allow_null=True)
+
+    def validate(self, data):
+        dataset = data.get("dataset")
+        workflow_id = data.get("workflow_id")
+
+        if not dataset and not workflow_id:
+            raise serializers.ValidationError(
+                "Either dataset or workflow_id must be provided."
+            )
+
+        if dataset and workflow_id:
+            workflow = Workflows.objects.filter(workflow_id=workflow_id).first()
+            if workflow and workflow.datasets.exists():
+                raise serializers.ValidationError(
+                    "Both dataset and workflow_id are provided, but the workflow already has a dataset associated with it."
+                )
+
+        return data
