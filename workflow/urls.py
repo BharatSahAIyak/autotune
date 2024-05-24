@@ -5,6 +5,8 @@ from .views import (
     ExamplesView,
     GenerateTaskView,
     IterateWorkflowView,
+    MLModelDetailView,
+    MLModelListView,
     PromptViewSet,
     SingleWorkflowView,
     TrainModelView,
@@ -74,4 +76,6 @@ urlpatterns = [
     ),
     path("user/", views.add_user, name="add-user"),
     path("train", TrainModelView.as_view(), name="train"),
+    path("models/", MLModelListView.as_view(), name="model-list"),
+    path("models/<uuid:id>/", MLModelDetailView.as_view(), name="model-detail"),
 ]

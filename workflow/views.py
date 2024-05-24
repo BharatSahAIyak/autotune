@@ -19,9 +19,10 @@ from rest_framework.views import APIView
 from .dataFetcher import DataFetcher
 from .generate import process_task
 from .mixins import UserIDMixin
-from .models import Examples, Prompt, Task, WorkflowConfig, Workflows
+from .models import Examples, MLModel, Prompt, Task, WorkflowConfig, Workflows
 from .serializers import (
     ExampleSerializer,
+    MLModelSerializer,
     ModelDataSerializer,
     PromptSerializer,
     UserSerializer,
@@ -704,3 +705,22 @@ class TrainModelView(UserIDMixin, APIView):
             return Response({"taskId": task.id}, status=status.HTTP_202_ACCEPTED)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class MLModelListView(APIView):
+
+    def get(self, request, format=None):
+        models = MLModel.objects.all()
+        serializer = MLModelSerializer(models, many=True)
+        return Response(serializer.data)
+
+
+class MLModelDetailView(APIView):
+
+    def get(self, request, id, format=None):
+        try:
+            model = MLModel.objects.get(id=id)
+            serializer = MLModelSerializer(model)
+            return Response(serializer.data)
+        except MLModel.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)

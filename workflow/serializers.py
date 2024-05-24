@@ -165,3 +165,11 @@ class ModelDataSerializer(serializers.Serializer):
             data["dataset"] = workflow_dataset.name
 
         return data
+
+
+class MLModelSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MLModel
+        fields = (
+            "__all__"  # You can list fields individually if you want to exclude some
+        )
