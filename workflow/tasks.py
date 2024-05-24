@@ -89,7 +89,7 @@ class TextClassification(Tasks):
         self.data_collator = DataCollatorWithPadding(tokenizer=self.tokenizer)
 
     def __preprocess_function(self, examples):
-        return self.tokenizer(examples["sentence"], truncation=True)
+        return self.tokenizer(examples["text"], truncation=True, padding=True)
 
     def compute_metrics(self, eval_pred):
         predictions, labels = eval_pred

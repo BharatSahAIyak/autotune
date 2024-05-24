@@ -1,19 +1,18 @@
 import io
 import json
-import logging
 import os
 import shutil
 
 from celery import shared_task
+from celery.utils.log import get_task_logger
 from datasets import load_dataset
 from django.conf import settings
-
-logger = logging.getLogger(__name__)
-
 from huggingface_hub import HfApi, login
 from transformers import TrainerCallback
 
 from .tasks import get_task_class
+
+logger = get_task_logger(__name__)
 
 
 @shared_task(bind=True, max_retries=settings.CELERY_MAX_RETRIES, retry_backoff=True)
@@ -54,7 +53,7 @@ def train_model(celery, req_data, task_id):
     )
 
     trainer = task.Trainer(
-        args=training_args, callbacks=[CeleryProgressCallback(celery)]
+        model=task.model, args=training_args, callbacks=[CeleryProgressCallback(celery)]
     )
 
     trainer.train()
@@ -68,22 +67,22 @@ def train_model(celery, req_data, task_id):
     celery.update_state(state="PUSHING", meta=meta)
 
     login(token=api_key)
-    task.model.push_to_hub(
+    trainer.model.push_to_hub(
         req_data["save_path"], commit_message="pytorch_model.bin upload/update"
     )
-    task.tokenizer.push_to_hub(req_data["save_path"])
+    trainer.tokenizer.push_to_hub(req_data["save_path"])
 
     # quantized_model = quantize_dynamic(task.model, {torch.nn.Linear}, dtype=torch.qint8)
 
-    ort_model = task.onnx.from_pretrained(
-        task.model, export=True
-    )  # revision = req['version']
-    ort_model.save_pretrained(f"./results_{celery.request.id}/onnx")
-    ort_model.push_to_hub(
-        f"./results_{celery.request.id}/onnx",
-        repository_id=req_data["save_path"],
-        use_auth_token=True,
-    )
+    # ort_model = task.onnx.from_pretrained(
+    #     task.model, export=True
+    # )  # revision = req['version']
+    # ort_model.save_pretrained(f"./results_{celery.request.id}/onnx")
+    # ort_model.push_to_hub(
+    #     f"./results_{celery.request.id}/onnx",
+    #     repository_id=req_data["save_path"],
+    #     use_auth_token=True,
+    # )
 
     hfApi = HfApi(endpoint="https://huggingface.co", token=api_key)
     hfApi.upload_file(
@@ -97,5 +96,7 @@ def train_model(celery, req_data, task_id):
         shutil.rmtree(f"./results_{celery.request.id}")
     if os.path.exists(f"./logs_{celery.request.id}"):
         shutil.rmtree(f"./logs_{celery.request.id}")
+
+    logger.info("Training complete")
 
     return meta
