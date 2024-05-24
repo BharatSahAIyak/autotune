@@ -153,11 +153,12 @@ class ModelDataSerializer(serializers.Serializer):
                 "Either dataset or workflow_id must be provided."
             )
 
-        if dataset and workflow_id:
-            workflow = Workflows.objects.filter(workflow_id=workflow_id).first()
-            if workflow and workflow.datasets.exists():
+        if not dataset and workflow_id:
+            workflow_dataset = Dataset.objects.filter(workflow_id=workflow_id).first()
+            if not workflow_dataset:
                 raise serializers.ValidationError(
-                    "Both dataset and workflow_id are provided, but the workflow already has a dataset associated with it."
+                    "No dataset associated with the provided workflow_id."
                 )
+            data["dataset"] = workflow_dataset.name
 
         return data
