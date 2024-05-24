@@ -143,6 +143,9 @@ class ModelDataSerializer(serializers.Serializer):
     task = serializers.ChoiceField(choices=["text_classification", "seq2seq"])
     version = serializers.CharField(max_length=50, required=False, default="main")
     workflow_id = serializers.UUIDField(required=False, allow_null=True)
+    model_id = serializers.UUIDField(
+        required=False, allow_null=True
+    )  # for an existing model
 
     def validate(self, data):
         dataset = data.get("dataset")

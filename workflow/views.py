@@ -682,10 +682,12 @@ def add_user(request):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class TrainModelView(APIView):
+class TrainModelView(UserIDMixin, APIView):
 
     def post(self, request, *args, **kwargs):
         serializer = ModelDataSerializer(data=request.data)
+        user_id = request.META["user"].user_id
+
         if serializer.is_valid():
             data = serializer.validated_data
             data["workflow_id"] = str(data["workflow_id"])
@@ -697,7 +699,7 @@ class TrainModelView(APIView):
                 workflow_id=workflow_id,
             )
 
-            train.apply_async(args=[data], task_id=str(task.id))
+            train.apply_async(args=[data, user_id], task_id=str(task.id))
 
             return Response({"taskId": task.id}, status=status.HTTP_202_ACCEPTED)
 
