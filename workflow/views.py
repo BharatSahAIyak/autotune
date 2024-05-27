@@ -16,8 +16,10 @@ from rest_framework.generics import ListAPIView, UpdateAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .dataFetcher import DataFetcher
-from .generate import process_task
+from workflow.generator.dataFetcher import DataFetcher
+from workflow.generator.generate import process_task
+from workflow.training.train import train
+
 from .mixins import UserIDMixin
 from .models import Examples, MLModel, Prompt, Task, User, WorkflowConfig, Workflows
 from .serializers import (
@@ -30,7 +32,6 @@ from .serializers import (
     WorkflowDetailSerializer,
     WorkflowSerializer,
 )
-from .train import train
 from .utils import (
     create_pydantic_model,
     dehydrate_cache,
