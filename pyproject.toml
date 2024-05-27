@@ -15,7 +15,7 @@ pandas = "^2.0.3"
 aioredis = {extras = ["hiredis"], version = "^2.0.1"}
 aiohttp = "^3.8.5"
 datasets = "^2.13.1"
-accelerate = "^0.21.0"
+accelerate = "^0.27.2"
 celery = {extras = ["redis"], version = "^5.3.1"}
 evaluate = "^0.4.0"
 rouge-score = "^0.1.2"

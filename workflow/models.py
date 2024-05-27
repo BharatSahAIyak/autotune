@@ -188,6 +188,16 @@ class Task(models.Model):
     total_samples = models.IntegerField(default=0)
 
 
+class TrainingMetadata(models.Model):
+    trained_at = models.DateTimeField(auto_now_add=True)
+    model = models.ForeignKey(
+        MLModel, on_delete=models.CASCADE, related_name="metadata"
+    )
+    logs = models.JSONField(default=dict)
+    metrics = models.JSONField(default=dict)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="training")
+
+
 class Log(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     api_url = models.CharField(max_length=255)

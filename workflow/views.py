@@ -16,18 +16,21 @@ from rest_framework.generics import ListAPIView, UpdateAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .celery_task import process_task
 from .dataFetcher import DataFetcher
+from .generate import process_task
 from .mixins import UserIDMixin
-from .models import Examples, Prompt, Task, WorkflowConfig, Workflows
+from .models import Examples, MLModel, Prompt, Task, WorkflowConfig, Workflows
 from .serializers import (
     ExampleSerializer,
+    MLModelSerializer,
+    ModelDataSerializer,
     PromptSerializer,
     UserSerializer,
     WorkflowConfigSerializer,
     WorkflowDetailSerializer,
     WorkflowSerializer,
 )
+from .train import train
 from .utils import (
     create_pydantic_model,
     dehydrate_cache,
@@ -680,7 +683,44 @@ def add_user(request):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-@api_view(["POST"])
-def train(request):
-    # TBD
-    return JsonResponse({"message": "hey"})
+class TrainModelView(UserIDMixin, APIView):
+
+    def post(self, request, *args, **kwargs):
+        serializer = ModelDataSerializer(data=request.data)
+        user_id = request.META["user"].user_id
+
+        if serializer.is_valid():
+            data = serializer.validated_data
+            data["workflow_id"] = str(data["workflow_id"])
+            workflow_id = data["workflow_id"]
+
+            task = Task.objects.create(
+                name=f"Training Workflow {workflow_id}",
+                status="STARTING",
+                workflow_id=workflow_id,
+            )
+
+            train.apply_async(args=[data, user_id], task_id=str(task.id))
+
+            return Response({"taskId": task.id}, status=status.HTTP_202_ACCEPTED)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class MLModelListView(APIView):
+
+    def get(self, request, format=None):
+        models = MLModel.objects.all()
+        serializer = MLModelSerializer(models, many=True)
+        return Response(serializer.data)
+
+
+class MLModelDetailView(APIView):
+
+    def get(self, request, id, format=None):
+        try:
+            model = MLModel.objects.get(id=id)
+            serializer = MLModelSerializer(model)
+            return Response(serializer.data)
+        except MLModel.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)

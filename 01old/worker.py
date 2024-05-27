@@ -11,7 +11,7 @@ print("PYTORCH_ENABLE_MPS_FALLBACK", os.environ["PYTORCH_ENABLE_MPS_FALLBACK"])
 import aioredis
 from celery import Celery
 
-from old.tasks import train_model
+from tasks import train_model
 
 celery_app = Celery(
     "tasks",
