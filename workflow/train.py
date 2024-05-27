@@ -11,7 +11,7 @@ from django.utils import timezone
 from huggingface_hub import HfApi, login
 from transformers import TrainerCallback
 
-from .models import MLModel, TrainingMetadata, User
+from .models import MLModel, Task, TrainingMetadata, User
 from .tasks import get_task_class
 
 logger = get_task_logger(__name__)
@@ -22,9 +22,14 @@ logger = get_task_logger(__name__)
 
 
 @shared_task(bind=True, max_retries=settings.CELERY_MAX_RETRIES, retry_backoff=True)
-def train(self, req_data, user_id):
+def train(self, req_data, user_id, training_task):
     task_id = self.request.id
+    task = Task.objects.get(id=task_id)
+    task.status = "TRAINING"
+    task.save()
     meta = train_model(self, req_data, task_id)
+    task.status = "PUSHING"
+    task.save()
     try:
         huggingface_id = req_data.get("save_path").split("/")[0]
         model_name = req_data.get("save_path").split("/")[-1]
@@ -65,6 +70,9 @@ def train(self, req_data, user_id):
     except Exception as e:
         logger.error(f"Failed to update model and log: {str(e)}")
 
+    task.status = "COMPLETE"
+    task.save()
+
 
 class CeleryProgressCallback(TrainerCallback):
     def __init__(self, task):
@@ -76,7 +84,6 @@ class CeleryProgressCallback(TrainerCallback):
 
 def train_model(celery, req_data, task_id):
     task_class = get_task_class(req_data["task"])
-    # todo: differentiate between workflow dataset and request dataset
     dataset = load_dataset(req_data["dataset"]).shuffle()
     task = task_class(req_data["model"], dataset, req_data["version"])
 

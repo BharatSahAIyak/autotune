@@ -74,7 +74,7 @@ class TextClassification(Tasks):
         self.onnx = ORTModelForSequenceClassification
 
     def _load_model_requirements(self):
-        num_labels = len(self.dataset["train"].unique("class"))
+        num_labels = len(self.dataset["train"].unique("label"))
         self.model = AutoModelForSequenceClassification.from_pretrained(
             self.model_name, num_labels=num_labels
         )
