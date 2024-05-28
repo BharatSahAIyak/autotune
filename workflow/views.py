@@ -629,6 +629,7 @@ class TrainModelView(UserIDMixin, APIView):
 
         if serializer.is_valid():
             data = serializer.validated_data
+            logger.info(f"Training model with data: {data}")
             data["workflow_id"] = str(data["workflow_id"])
             workflow_id = data["workflow_id"]
 

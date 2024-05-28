@@ -16,10 +16,6 @@ from .tasks import get_task_class
 
 logger = get_task_logger(__name__)
 
-from .tasks import get_task_class
-
-logger = get_task_logger(__name__)
-
 
 @shared_task(bind=True, max_retries=settings.CELERY_MAX_RETRIES, retry_backoff=True)
 def train(self, req_data, user_id, training_task):
@@ -83,68 +79,40 @@ class CeleryProgressCallback(TrainerCallback):
 
 
 def train_model(celery, req_data, task_id):
+    req_data["task_id"] = task_id
     task_class = get_task_class(req_data["task"])
-    dataset = load_dataset(req_data["dataset"]).shuffle()
-    task = task_class(req_data["model"], dataset, req_data["version"])
-
-    api_key = settings.HUGGING_FACE_TOKEN
-
-    training_args = task.TrainingArguments(
-        output_dir=f"./results_{task_id}",
-        num_train_epochs=req_data["epochs"],
-        per_device_train_batch_size=1,
-        per_device_eval_batch_size=1,
-        logging_dir=f"./logs_{task_id}",
-        save_strategy="epoch",
-        evaluation_strategy="epoch",
-        load_best_model_at_end=True,
-        metric_for_best_model="eval_loss",
-        warmup_steps=500,
-        weight_decay=0.01,
-        do_predict=True,
-    )
-
+    # TODO: differentiate between workflow dataset and request dataset
+    task = task_class(req_data["model"], req_data["version"])
+    dataset = task.load_dataset(req_data["dataset"])
+    training_args = task.get_training_args(req_data, dataset)
+    
     trainer = task.Trainer(
         model=task.model, args=training_args, callbacks=[CeleryProgressCallback(celery)]
     )
 
     trainer.train()
 
-    _, _, metrics = trainer.predict(task.tokenized_dataset["test"])
-    json_metrics = json.dumps(metrics)
-    json_bytes = json_metrics.encode("utf-8")
-    fileObj = io.BytesIO(json_bytes)
+    # _, _, metrics = trainer.predict(task.tokenized_dataset["test"])
+    # json_metrics = json.dumps(metrics)
+    # json_bytes = json_metrics.encode("utf-8")
+    # fileObj = io.BytesIO(json_bytes)
 
-    meta = {"logs": trainer.state.log_history, "metrics": metrics}
-    celery.update_state(state="PUSHING", meta=meta)
+    # meta = {"logs": trainer.state.log_history, "metrics": metrics}
+    # celery.update_state(state="PUSHING", meta=meta)
 
+    api_key = settings.HUGGING_FACE_TOKEN
     login(token=api_key)
-    trainer.model.push_to_hub(
-        req_data["save_path"], commit_message="pytorch_model.bin upload/update"
-    )
-    trainer.tokenizer.push_to_hub(req_data["save_path"])
+    task.push_to_hub(trainer, req_data["save_path"], hf_token=api_key)
 
-    # quantized_model = quantize_dynamic(task.model, {torch.nn.Linear}, dtype=torch.qint8)
-
-    # ort_model = task.onnx.from_pretrained(
-    #     task.model, export=True
-    # )  # revision = req['version']
-    # ort_model.save_pretrained(f"./results_{celery.request.id}/onnx")
-    # ort_model.push_to_hub(
-    #     f"./results_{celery.request.id}/onnx",
-    #     repository_id=req_data["save_path"],
-    #     use_auth_token=True,
+    # hfApi = HfApi(endpoint="https://huggingface.co", token=api_key)
+    # upload = hfApi.upload_file(
+    #     path_or_fileobj=fileObj,
+    #     path_in_repo="metrics.json",
+    #     repo_id=req_data["save_path"],
+    #     repo_type="model",
     # )
 
-    hfApi = HfApi(endpoint="https://huggingface.co", token=api_key)
-    upload = hfApi.upload_file(
-        path_or_fileobj=fileObj,
-        path_in_repo="metrics.json",
-        repo_id=req_data["save_path"],
-        repo_type="model",
-    )
-
-    meta["latest_commit_hash"] = upload.commit_url.split("/")[-1]
+    # meta["latest_commit_hash"] = upload.commit_url.split("/")[-1]
 
     if os.path.exists(f"./results_{celery.request.id}"):
         shutil.rmtree(f"./results_{celery.request.id}")
@@ -153,4 +121,4 @@ def train_model(celery, req_data, task_id):
 
     logger.info("Training complete")
 
-    return meta
+    # return meta
