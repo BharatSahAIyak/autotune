@@ -1,15 +1,18 @@
 import ast
 import io
 import logging
+import uuid
 from decimal import Decimal, getcontext
 
 import pandas as pd
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
+from huggingface_hub import HfApi
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.generics import ListAPIView, UpdateAPIView
@@ -21,7 +24,16 @@ from workflow.generator.generate import process_task
 from workflow.training.train import train
 
 from .mixins import UserIDMixin
-from .models import Examples, MLModel, Prompt, Task, User, WorkflowConfig, Workflows
+from .models import (
+    Dataset,
+    Examples,
+    MLModel,
+    Prompt,
+    Task,
+    User,
+    WorkflowConfig,
+    Workflows,
+)
 from .serializers import (
     ExampleSerializer,
     MLModelSerializer,
@@ -661,10 +673,155 @@ class MLModelListView(APIView):
 
 class MLModelDetailView(APIView):
 
-    def get(self, request, id, format=None):
+    def get(self, request, model_id, format=None):
         try:
-            model = MLModel.objects.get(id=id)
+            model = MLModel.objects.get(id=model_id)
             serializer = MLModelSerializer(model)
             return Response(serializer.data)
         except MLModel.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
+
+
+class DatasetView(APIView):
+
+    def get(self, request, workflow_id):
+        """
+        Fetches CSV files from a Hugging Face dataset repository, with pagination and optional file-specific fetching.
+
+        If 'dataset' is provided, downloads CSV files from the specified Hugging Face dataset (format: {username}/{dataset_name}).
+        If 'file' is provided, only this file's data is returned.
+
+        If no Hugging Face dataset is provided, then the dataset generated at autotune is returned, and if no dataset is available,
+        HTTP Status No Content is returned.
+
+        Parameters:
+         - workflow_id(UUID): The ID of the workflow for which the dataset is to be fetched.
+         - page(int): The page number for the dataset - Optional.
+         - page_size(int): The number of records per page - Optional.
+         - dataset(str): The Hugging Face dataset to be fetched - Optional.
+         - file(str): Specific file name to fetch from the dataset - Optional.
+        """
+        page = request.query_params.get("page", 1)
+        page_size = request.query_params.get("page_size", 10)
+        dataset = request.query_params.get("dataset", None)
+        file = request.query_params.get("file", None)
+
+        try:
+            page = int(page)
+            page_size = int(page_size)
+        except ValueError:
+            return Response(
+                {"error": "Page and page size must be integers."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        hf_api = HfApi(token=settings.HUGGING_FACE_TOKEN)
+
+        if not dataset:
+            workflow_id = request.query_params.get(
+                "workflow_id"
+            )  # Assuming workflow_id is fetched from query params
+            workflow_dataset = Dataset.objects.filter(workflow_id=workflow_id).first()
+            if not workflow_dataset:
+                return Response(status=status.HTTP_204_NO_CONTENT)
+            dataset = f"{workflow_dataset.huggingface_id}/{workflow_dataset.name}"
+
+        if not hf_api.repo_exists(repo_id=dataset, repo_type="dataset"):
+            return Response(
+                {"error": "Dataset does not exist."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            repo_files = hf_api.list_repo_files(repo_id=dataset, repo_type="dataset")
+            csv_file_names = [
+                f
+                for f in repo_files
+                if f.endswith(".csv") and (file is None or f == file)
+            ]
+
+            csv_files = []
+
+            for csv_file_name in csv_file_names:
+                csv_files.append(
+                    hf_api.hf_hub_download(
+                        repo_id=dataset, repo_type="dataset", filename=csv_file_name
+                    )
+                )
+
+            if not csv_files:
+                return Response(
+                    {
+                        "pagination": {
+                            "page": page,
+                            "perPage": page_size,
+                            "totalPages": 0,
+                            "totalCount": 0,
+                        },
+                        "data": [],
+                    },
+                    status=status.HTTP_204_NO_CONTENT,
+                )
+
+            data_frames = []
+            for csv_file in csv_files:
+                df = pd.read_csv(csv_file)
+
+                if "id" not in df.columns:
+                    df["id"] = [str(uuid.uuid4()) for _ in range(len(df))]
+
+                data_frames.append(df)
+
+            if not data_frames:
+                return Response(
+                    {
+                        "pagination": {
+                            "page": page,
+                            "perPage": page_size,
+                            "totalPages": 0,
+                            "totalCount": 0,
+                        },
+                        "data": [],
+                    },
+                    status=status.HTTP_204_NO_CONTENT,
+                )
+
+            combined_df = (
+                pd.concat(data_frames) if len(data_frames) > 1 else data_frames[0]
+            )
+
+            total_count = len(combined_df)
+            total_pages = (total_count + page_size - 1) // page_size
+
+            start = (page - 1) * page_size
+            end = start + page_size
+            paginated_data = combined_df.iloc[start:end].to_dict(orient="records")
+
+            if not paginated_data:
+                return Response(
+                    {
+                        "pagination": {
+                            "page": page,
+                            "perPage": page_size,
+                            "totalPages": total_pages,
+                            "totalCount": total_count,
+                        },
+                        "data": [],
+                    },
+                    status=status.HTTP_204_NO_CONTENT,
+                )
+
+            return Response(
+                {
+                    "pagination": {
+                        "page": page,
+                        "perPage": page_size,
+                        "totalPages": total_pages,
+                        "totalCount": total_count,
+                    },
+                    "data": paginated_data,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
