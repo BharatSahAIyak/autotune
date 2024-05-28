@@ -19,7 +19,7 @@ from rest_framework.views import APIView
 from .dataFetcher import DataFetcher
 from .generate import process_task
 from .mixins import UserIDMixin
-from .models import Examples, MLModel, Prompt, Task, WorkflowConfig, Workflows
+from .models import Examples, MLModel, Prompt, Task, User, WorkflowConfig, Workflows
 from .serializers import (
     ExampleSerializer,
     MLModelSerializer,
@@ -45,105 +45,43 @@ def index():
     return HttpResponse("Hello, world. You're at the workflow index.")
 
 
-@csrf_exempt
-@api_view(["POST"])
-def create_workflow_with_prompt(request):
-    """
-    Creates a new workflow and its associated prompt
-    Parameters:
-    - request (HttpRequest): The HTTP request object containing the JSON payload.
+class CreateWorkflowView(UserIDMixin, APIView):
 
-    Request JSON payload format:
-    {
-        "workflow": {
-            "workflow_name": "Data Analysis Workflow",
-            "workflow_config": "QnA",
-            "total_examples": 1000,
-            "split": [
-                70,
-                20,
-                10
-            ],
-            "llm_model": "gpt-4-0125-preview",
-            "cost": 200,
-            "tags": [
-                "data analysis",
-                "machine learning"
-            ],
-            "user": "429088bd-73c4-454a-91c7-e29081b36531"
-        },
-        "user_prompt": "Create questions on world war 2 for class 8 students",
-        "examples": [
+    def post(self, request):
+        with transaction.atomic():
+            user: User = request.META["user"]
+
+            workflow_data = request.data.get("workflow")
+            workflow_data["user"] = user.user_id
+            workflow_serializer = WorkflowSerializer(
+                data=request.data.get("workflow", {})
+            )
+            if workflow_serializer.is_valid(raise_exception=True):
+                workflow = workflow_serializer.save()
+
+                prompt_data = {
+                    "user_prompt": request.data.get("user_prompt", ""),
+                    "workflow": workflow.pk,
+                }
+
+                prompt_serializer = PromptSerializer(data=prompt_data)
+                if prompt_serializer.is_valid(raise_exception=True):
+                    prompt_serializer.save()
+
+                    return Response(
+                        {
+                            "workflow": workflow_serializer.data,
+                            "prompt": prompt_serializer.data,
+                        },
+                        status=status.HTTP_201_CREATED,
+                    )
+
+        return Response(
             {
-                "text": "Example question about data analysis?",
-                "label": "positive",
-                "reason": "Relevant to the domain of data analysis"
+                "error": "Invalid data for workflow or prompt",
             },
-            {
-                "text": "Example question not related to data analysis.",
-                "label": "negative",
-                "reason": "Not relevant to the domain"
-            }
-            // Additional examples can be added here (This is Optional)
-        ]
-    }
-
-    Returns:
-        {
-          "workflow": {
-            "workflow_id": "123e4567-e89b-12d3-a456-426614174000",
-            "workflow_name": "Data Analysis Workflow",
-            "total_examples": 1000,
-            "split": [70, 20, 10],
-            "llm_model": "gpt-4-0125-preview",
-            "cost": 200,
-            "tags": ["data analysis", "machine learning"],
-            "user": "uuid-of-the-user",
-            "created_at": "2024-03-07T12:00:00Z",
-            "updated_at": "2024-03-07T12:00:00Z"
-          },
-          "user_prompt": "User provided information to replace {{.DocumentChunk}}",
-          "examples": [ // this is Optional
-            {
-                "example_id": "456f7890-f123-45h6-i789-012j345678k9",
-                "text": "Example question about data analysis?",
-                "label": "positive",
-                "reason": "Relevant to the domain of data analysis",
-                "workflow": "123e4567-e89b-12d3-a456-426614174000"
-            },
-            // Additional examples if provided
-          ]
-        }
-    """
-
-    with transaction.atomic():
-        workflow_serializer = WorkflowSerializer(data=request.data.get("workflow", {}))
-        if workflow_serializer.is_valid(raise_exception=True):
-            workflow = workflow_serializer.save()
-
-            prompt_data = {
-                "user_prompt": request.data.get("user_prompt", ""),
-                "workflow": workflow.pk,
-            }
-
-            prompt_serializer = PromptSerializer(data=prompt_data)
-            if prompt_serializer.is_valid(raise_exception=True):
-                prompt_serializer.save()
-
-                return Response(
-                    {
-                        "workflow": workflow_serializer.data,
-                        "prompt": prompt_serializer.data,
-                    },
-                    status=status.HTTP_201_CREATED,
-                )
-
-    return Response(
-        {
-            "error": "Invalid data for workflow or prompt",
-        },
-        status=status.HTTP_400_BAD_REQUEST,
-    )
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -695,13 +633,18 @@ class TrainModelView(UserIDMixin, APIView):
             data["workflow_id"] = str(data["workflow_id"])
             workflow_id = data["workflow_id"]
 
+            training_task = request.data.get("training_task", "text_classification")
+
             task = Task.objects.create(
                 name=f"Training Workflow {workflow_id}",
                 status="STARTING",
                 workflow_id=workflow_id,
             )
 
-            train.apply_async(args=[data, user_id], task_id=str(task.id))
+            train.apply_async(
+                args=[data, user_id, training_task],
+                task_id=str(task.id),
+            )
 
             return Response({"taskId": task.id}, status=status.HTTP_202_ACCEPTED)
 
