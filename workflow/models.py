@@ -42,18 +42,6 @@ class User(models.Model):
     role = models.CharField(max_length=255, default="user")
 
 
-class MLModel(models.Model):
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
-    huggingface_id = models.CharField(null=True, blank=True)
-    uploaded_at = models.DateTimeField(null=True, blank=True)
-    latest_commit_hash = models.UUIDField(null=True, blank=True)
-    is_trained_at_autotune = models.BooleanField(default=False)
-    name = models.CharField(max_length=255)
-    is_locally_cached = models.BooleanField(default=False)
-
-
 class Dataset(models.Model):
     class DatasetType(models.TextChoices):
         ASR = "ASR", _("ASR")
@@ -86,6 +74,28 @@ class Dataset(models.Model):
     type = models.CharField(
         max_length=50, choices=DatasetType.choices, default=DatasetType.SYNTHETIC
     )
+
+
+class MLModel(models.Model):
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
+    name = models.CharField(max_length=255)
+    huggingface_id = models.CharField(null=True, blank=True)
+    uploaded_at = models.DateTimeField(null=True, blank=True)
+    latest_commit_hash = models.UUIDField(null=True, blank=True)
+    is_trained_at_autotune = models.BooleanField(default=False)
+    is_locally_cached = models.BooleanField(default=False)
+    trained_on = models.ForeignKey(
+        Dataset,
+        related_name="trained_on",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+    )
+    label_studio_component = models.TextField(null=True, blank=True)
+    rendering_config = models.TextField(null=True, blank=True)
+    label_studio_comp = models.TextField(null=True, blank=True)
 
 
 class WorkflowConfig(models.Model):
