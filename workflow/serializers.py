@@ -141,22 +141,24 @@ class WorkflowConfigSerializer(serializers.ModelSerializer):
 
 
 class ModelDataSerializer(serializers.Serializer):
-    dataset = serializers.CharField(
-        max_length=255, required=False, allow_blank=True
-    )  # needs to be a valid dataset on huggingface
+    dataset = serializers.CharField(max_length=255, required=False, allow_blank=True)
     model = serializers.CharField(
         max_length=255
-    )  # needs to be a vlid model on huggingface
-    epochs = serializers.FloatField(required=False, default=1)
-    save_path = serializers.CharField(max_length=255)
-    task = serializers.ChoiceField(choices=["text_classification", "seq2seq"])
-    version = serializers.CharField(max_length=50, required=False, default="main")
-    workflow_id = serializers.UUIDField(required=False, allow_null=True)
+    )  # TODO: needs to be a valid model on huggingface
     model_id = serializers.UUIDField(
         required=False, allow_null=True
     )  # for an existing model
+    epochs = serializers.FloatField(required=False, default=1)
+    save_path = serializers.CharField(max_length=255)
+    task = serializers.ChoiceField(
+        choices=["text_classification", "seq2seq", "embedding"]
+    )  # TODO: Create a constant for TASKS
+    version = serializers.CharField(max_length=50, required=False, default="main")
+    workflow_id = serializers.UUIDField(required=False, allow_null=True)
 
     def validate(self, data):
+        # TODO: needs to be a valid dataset on huggingface
+        # TODO: Add validation for model_id
         dataset = data.get("dataset")
         workflow_id = data.get("workflow_id")
 
