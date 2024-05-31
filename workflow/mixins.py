@@ -15,7 +15,7 @@ from rest_framework.response import Response
 from workflow.models import User
 
 from .models import Dataset, DatasetData
-from .utils import get_task_config, get_task_mapping
+from .utils import get_task_mapping
 
 logger = logging.getLogger(__name__)
 
@@ -116,12 +116,10 @@ class CacheDatasetMixin:
                 dataset = request.POST.get("dataset")
                 task_type = request.POST.get("task_type")
 
-            task_config = get_task_config(task_type)
-
-            if not task_config:
-                raise ValueError("Task type not found.")
-
             task_mapping = get_task_mapping(task_type)
+
+            if not task_mapping:
+                raise ValueError("Task type not found.")
 
             if dataset:
                 huggingface_id, dataset_name = dataset.split("/")

@@ -205,7 +205,7 @@ def get_model_cost(model):
     return costs[model]
 
 
-def get_task_config(task):
+def get_task_config(task=None):
     task_config = {
         "text_classification": {
             "model": "BERT",
@@ -215,20 +215,36 @@ def get_task_config(task):
                 "config": {"query": "Query", "choices": ["Choice 1", "Choice 2"]},
             },
         },
-        "ner": {
+        "NER": {
             "model": "distilbert-finetuned",
-            "task": "text_classification",
+            "task": "NER",
             "labelStudioElement": {
-                "name": "Named entity recognition",
-                "config": {"query": "Query", "choices": ["Choice 1", "Choice 2"]},
+                "name": "Named Entity Recognition",
+                "config": {"labels": [{"name": "", "value": ""}]},
+            },
+        },
+        "translation": {
+            "model": "FCoref",
+            "task": "Neural coreference",
+            "labelStudioElement": {
+                "name": "Translation",
+                "config": {"from": "english", "to": "odia"},
             },
         },
     }
 
-    if task in task_config:
-        return task_config[task]
+    keys = list(task_config.keys())
+    res = []
+    for key in keys:
+        res.append(task_config[key])
+
+    if task:
+        if task in task_config:
+            return [task_config[task]]
+        else:
+            return None
     else:
-        return None
+        return res
 
 
 # to get the mapping between the dataset columns and the input columns
@@ -237,8 +253,10 @@ def get_task_mapping(task):
     mapping = {
         "text_classification": {"input_string": "question", "output_string": "choices"}
     }
-
-    return mapping[task]
+    if task in mapping:
+        return mapping[task]
+    else:
+        return None
 
 
 def paginate_queryset(queryset, page, page_size):

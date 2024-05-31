@@ -51,6 +51,7 @@ from .utils import (
     create_pydantic_model,
     dehydrate_cache,
     get_model_cost,
+    get_task_config,
     get_task_mapping,
     paginate_queryset,
     validate_and_save_examples,
@@ -800,3 +801,18 @@ class DatasetView(CacheDatasetMixin, APIView):
             {"message": "Dataset data saved successfully."},
             status=status.HTTP_201_CREATED,
         )
+
+
+class ConfigView(APIView):
+    def get(self, request):
+        task = request.query_params.get("task", None)
+        if task is None:
+            return Response({"data": get_task_config()}, status=status.HTTP_200_OK)
+        else:
+            task_mapping = get_task_mapping(task)
+            if task_mapping:
+                return Response({"data": task_mapping}, status=status.HTTP_200_OK)
+            else:
+                return Response(
+                    {"error": "Task not found"}, status=status.HTTP_404_NOT_FOUND
+                )
