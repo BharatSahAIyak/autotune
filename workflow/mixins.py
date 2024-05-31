@@ -14,7 +14,7 @@ from rest_framework.response import Response
 
 from workflow.models import User
 
-from .models import Dataset, DatasetData
+from .models import Dataset, DatasetData, Workflows
 from .utils import get_task_mapping
 
 logger = logging.getLogger(__name__)
@@ -106,8 +106,10 @@ class CacheDatasetMixin:
         """
 
         try:
-            workflow_id = kwargs.get("workflow_id", None)
+            user_id = request.META["user"].user_id
             dataset = None
+
+            workflows = Workflows.objects.filter(user_id=user_id)
 
             if request.method == "GET":
                 dataset = request.GET.get("dataset")
@@ -116,14 +118,34 @@ class CacheDatasetMixin:
                 dataset = request.POST.get("dataset")
                 task_type = request.POST.get("task_type")
 
+            workflow_id = None
+            created = False
+
             task_mapping = get_task_mapping(task_type)
 
             if not task_mapping:
-                raise ValueError("Task type not found.")
+                raise ValueError("Please give a valid task type.")
+
+            for workflow in workflows:
+                test_dataset = Dataset.objects.get(workflow_id=workflow.workflow_id)
+                if test_dataset.type == task_type:
+                    workflow_id = workflow.workflow_id
+                    logger.info("found a valid workflow")
+
+            if workflow_id is None:
+                # handle stupid situation and create a new workflow -_-
+                created_workflow = Workflows.objects.create(
+                    user_id=user_id,
+                    type="Training",
+                    workflow_name=f"training_{task_type}",
+                )
+                workflow_id = created_workflow.workflow_id
+                created = True
+                logger.info("created a workflow for the task.")
 
             if dataset:
                 huggingface_id, dataset_name = dataset.split("/")
-                dataset_object, created = Dataset.objects.get_or_create(
+                dataset_object, _ = Dataset.objects.get_or_create(
                     huggingface_id=huggingface_id,
                     name=dataset_name,
                     type=task_type,
@@ -136,7 +158,7 @@ class CacheDatasetMixin:
                 if not dataset_object.is_locally_cached:
                     self.cache_dataset(dataset_object, task_mapping, dataset)
 
-            else:
+            elif not created:
                 dataset_object = Dataset.objects.filter(workflow_id=workflow_id).first()
                 if not dataset_object:
                     raise ValueError("No dataset associated with the workflow.")
@@ -148,11 +170,15 @@ class CacheDatasetMixin:
                         f"{dataset_object.huggingface_id}/{dataset_object.name}",
                     )
 
+            else:
+                raise ValueError("No dataset available.")
+
             request.META["cached_dataset_id"] = dataset_object.id
+            request.META["workflow_id"] = workflow_id
 
             response = super().dispatch(request, *args, **kwargs)
 
-            print("Request processing completed.")
+            print("Request pre-processing completed.")
 
             return response
 
@@ -171,7 +197,7 @@ class CacheDatasetMixin:
         return response
 
     def cache_dataset(self, dataset_object, task_mapping, dataset):
-        print("not in cache, will cache this dataset")
+        logger.info("didnt find the dataset in the cache, creating a new cache")
         hf_api = HfApi(token=settings.HUGGING_FACE_TOKEN)
 
         if hf_api.repo_exists(repo_id=dataset, repo_type="dataset"):
@@ -227,7 +253,7 @@ class CacheDatasetMixin:
                     setattr(row_data, task_key, row[csv_column])
 
                 row_data.save()
-                print("inserted record into the db")
+            logger.info(f"inserted all record into the db for {filename}")
 
         dataset_object.is_locally_cached = True
         dataset_object.latest_commit_hash = repo_info.sha

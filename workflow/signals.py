@@ -18,15 +18,25 @@ def update_latest_prompt(sender, instance, created, **kwargs):
 @receiver(pre_save, sender=Workflows)
 def validate_workflow(sender, instance, **kwargs):
     """
-    Checks that a workflow configuration is present for workflows of type 'COMPLETE'.
+    Checks that required fields are present for workflows of type 'COMPLETE'.
     """
-    if (
-        instance.type == Workflows.WorkflowType.COMPLETE
-        and not instance.workflow_config
-    ):
-        raise ValidationError(
-            "Workflow configuration is required for COMPLETE type workflows."
-        )
+    if instance.type == Workflows.WorkflowType.COMPLETE:
+        if not instance.workflow_config:
+            raise ValidationError(
+                "Workflow configuration is required for COMPLETE type workflows."
+            )
+        if not instance.latest_prompt:
+            raise ValidationError(
+                "Latest prompt is required for COMPLETE type workflows."
+            )
+        if not instance.split:
+            raise ValidationError("Split is required for COMPLETE type workflows.")
+        if not instance.total_examples:
+            raise ValidationError(
+                "Total examples are required for COMPLETE type workflows."
+            )
+        if not instance.tags:
+            raise ValidationError("Tags are required for COMPLETE type workflows.")
 
 
 @receiver(pre_save, sender=DatasetData)

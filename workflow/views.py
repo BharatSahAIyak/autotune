@@ -688,9 +688,9 @@ class MLModelDetailView(APIView):
             return Response(status=status.HTTP_404_NOT_FOUND)
 
 
-class DatasetView(CacheDatasetMixin, APIView):
+class DatasetView(UserIDMixin, CacheDatasetMixin, APIView):
 
-    def get(self, request, workflow_id):
+    def get(self, request):
         """
         Fetches CSV files from a Hugging Face dataset repository, with pagination and optional file-specific fetching.
 
@@ -716,7 +716,10 @@ class DatasetView(CacheDatasetMixin, APIView):
             page_size = int(page_size)
         except ValueError:
             return Response(
-                {"error": "Page and page size must be integers."},
+                {
+                    "error": "Page and page size must be integers.",
+                    "workflow_id": request.META.get("workflow_id"),
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -733,6 +736,7 @@ class DatasetView(CacheDatasetMixin, APIView):
         if not paginated_data:
             return Response(
                 {
+                    "workflow_id": request.META.get("workflow_id"),
                     "pagination": {
                         "page": page,
                         "perPage": page_size,
@@ -747,6 +751,7 @@ class DatasetView(CacheDatasetMixin, APIView):
         serializer = DatasetDataSerializer(paginated_data, many=True)
         return Response(
             {
+                "workflow_id": request.META.get("workflow_id"),
                 "pagination": {
                     "page": page,
                     "perPage": page_size,
@@ -758,7 +763,7 @@ class DatasetView(CacheDatasetMixin, APIView):
             status=status.HTTP_200_OK,
         )
 
-    def post(self, request, workflow_id):
+    def post(self, request):
         """
         Gets a dataset from huggingface, and stores it in the local cache if not already not locally cached, and stores any changes in the dataset till it is committed
         to HF just before training is triggered
@@ -779,7 +784,10 @@ class DatasetView(CacheDatasetMixin, APIView):
 
         if not output:
             return Response(
-                {"error": "Output is required."},
+                {
+                    "error": "Output is required.",
+                    "workflow_id": request.META.get("workflow_id"),
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -798,13 +806,25 @@ class DatasetView(CacheDatasetMixin, APIView):
         record_data.save()
 
         return Response(
-            {"message": "Dataset data saved successfully."},
+            {
+                "message": "Dataset data saved successfully.",
+                "workflow_id": request.META.get("workflow_id"),
+            },
             status=status.HTTP_201_CREATED,
         )
 
 
 class ConfigView(APIView):
     def get(self, request):
+        """
+        Returns the config of all the tasks or a specific task if provided.
+
+        Args:
+            task: task to get the config for -OPTIONAL
+
+        Returns:
+            Array of the configs for all the tasks or a single task in an array
+        """
         task = request.query_params.get("task", None)
         if task is None:
             return Response({"data": get_task_config()}, status=status.HTTP_200_OK)

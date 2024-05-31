@@ -115,6 +115,7 @@ class WorkflowConfig(models.Model):
 
 
 class Workflows(models.Model):
+
     class WorkflowStatus(models.TextChoices):
         SETUP = "SETUP", _("Setup")
         ITERATION = "ITERATION", _("Iteration")
@@ -139,15 +140,19 @@ class Workflows(models.Model):
         null=True,
         blank=True,
     )
-    tags = ArrayField(models.CharField(max_length=255))
-    total_examples = models.IntegerField()
+    tags = ArrayField(models.CharField(max_length=255), null=True, blank=True)
+    total_examples = models.IntegerField(null=True, blank=True)
     split = ArrayField(
         models.IntegerField(validators=[MinValueValidator(0), MaxValueValidator(100)]),
         default=default_split,
         validators=[validate_split],
+        null=True,
+        blank=True,
     )
     llm_model = models.CharField(
-        max_length=255, choices=[(model, model) for model in LLM_MODELS]
+        max_length=255,
+        choices=[(model, model) for model in LLM_MODELS],
+        default="gpt-3.5-turbo",
     )
     cost = models.DecimalField(decimal_places=4, max_digits=10, default=0)
     estimated_dataset_cost = models.DecimalField(
