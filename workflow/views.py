@@ -1,8 +1,8 @@
 import ast
 import io
 import logging
-import uuid
 from decimal import Decimal, getcontext
+from typing import List
 
 import pandas as pd
 from django.conf import settings
@@ -51,6 +51,7 @@ from .utils import (
     create_pydantic_model,
     dehydrate_cache,
     get_model_cost,
+    get_task_mapping,
     paginate_queryset,
     validate_and_save_examples,
 )
@@ -764,6 +765,38 @@ class DatasetView(CacheDatasetMixin, APIView):
         Parameters:
          - workflow_id(UUID): The ID of the workflow for which the dataset is to be fetched.
         Body:
-         - data(json): k-v pairs for all non-id fields in the dataset
          - dataset(str): The Hugging Face dataset. If this is not provided, then fall back to the workflow dataset- Optional.
         """
+        input = request.data.get("input", None)
+        output = request.data.get("output", None)
+
+        if not input:
+            return Response(
+                {"error": "Input is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not output:
+            return Response(
+                {"error": "Output is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # will be a valid dataset id, handled in the mixin
+        cached_dataset_id = request.META.get("cached_dataset_id", None)
+        dataset_object = Dataset.objects.get(id=cached_dataset_id)
+        task = dataset_object.type
+        task_mapping = get_task_mapping(task)
+        keys = list(task_mapping.keys())
+
+        record_data = DatasetData(dataset=dataset_object, file="train.csv")
+
+        setattr(record_data, keys[0], input)
+        setattr(record_data, keys[1], output)
+
+        record_data.save()
+
+        return Response(
+            {"message": "Dataset data saved successfully."},
+            status=status.HTTP_201_CREATED,
+        )
