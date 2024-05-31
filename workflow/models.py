@@ -185,8 +185,8 @@ class DatasetData(models.Model):
     file = models.CharField(max_length=255, null=True, blank=True)
     input_string = models.TextField(blank=True, null=True)
     output_string = models.TextField(blank=True, null=True)
-    input_json = models.JSONField(default=dict, blank=True, null=True)
-    output_json = models.JSONField(default=dict, blank=True, null=True)
+    input_json = models.JSONField(blank=True, null=True)
+    output_json = models.JSONField(blank=True, null=True)
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE, related_name="data")
 
     def save(self, *args, **kwargs):
