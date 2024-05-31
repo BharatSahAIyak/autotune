@@ -202,3 +202,39 @@ def get_model_cost(model):
     }
 
     return costs[model]
+
+
+def get_task_config(task):
+    task_config = {
+        "text_classification": {
+            "model": "BERT",
+            "task": "text_classification",
+            "labelStudioElement": {
+                "name": "Text Classification",
+                "config": {"query": "Query", "choices": ["Choice 1", "Choice 2"]},
+            },
+        },
+        "ner": {
+            "model": "distilbert-finetuned",
+            "task": "text_classification",
+            "labelStudioElement": {
+                "name": "Named entity recognition",
+                "config": {"query": "Query", "choices": ["Choice 1", "Choice 2"]},
+            },
+        },
+    }
+
+    if task in task_config:
+        return task_config[task]
+    else:
+        return None
+
+
+# to get the mapping between the dataset columns and the input columns
+# task:{input_column: dataset_column,output_column: dataset_column}
+def get_task_mapping(task):
+    mapping = {
+        "text_classification": {"input_string": "question", "output_string": "choices"}
+    }
+
+    return mapping[task]

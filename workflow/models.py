@@ -182,6 +182,7 @@ class DatasetData(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    file = models.CharField(max_length=255, null=True, blank=True)
     input_string = models.TextField(blank=True, null=True)
     output_string = models.TextField(blank=True, null=True)
     input_json = models.JSONField(default=dict, blank=True, null=True)
