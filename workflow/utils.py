@@ -13,6 +13,7 @@ from django.shortcuts import get_object_or_404
 from pydantic import BaseModel
 from pydantic import ValidationError as PydanticValidationError
 from rest_framework import status
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
 from .models import Examples, WorkflowConfig
@@ -238,3 +239,15 @@ def get_task_mapping(task):
     }
 
     return mapping[task]
+
+
+def paginate_queryset(queryset, page, page_size):
+    total_count = queryset.count()
+    total_pages = (total_count + page_size - 1) // page_size
+
+    if page > total_pages or page < 1:
+        return [], total_count, total_pages
+
+    start = (page - 1) * page_size
+    end = start + page_size
+    return queryset[start:end], total_count, total_pages

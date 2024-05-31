@@ -15,6 +15,7 @@ from django.views.decorators.csrf import csrf_exempt
 from huggingface_hub import HfApi
 from rest_framework import status
 from rest_framework.decorators import api_view
+from rest_framework.exceptions import NotFound
 from rest_framework.generics import ListAPIView, UpdateAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -23,9 +24,10 @@ from workflow.generator.dataFetcher import DataFetcher
 from workflow.generator.generate import process_task
 from workflow.training.train import train
 
-from .mixins import UserIDMixin
+from .mixins import CacheDatasetMixin, UserIDMixin
 from .models import (
     Dataset,
+    DatasetData,
     Examples,
     MLModel,
     Prompt,
@@ -35,6 +37,7 @@ from .models import (
     Workflows,
 )
 from .serializers import (
+    DatasetDataSerializer,
     ExampleSerializer,
     MLModelSerializer,
     ModelDataSerializer,
@@ -48,6 +51,7 @@ from .utils import (
     create_pydantic_model,
     dehydrate_cache,
     get_model_cost,
+    paginate_queryset,
     validate_and_save_examples,
 )
 
@@ -682,7 +686,7 @@ class MLModelDetailView(APIView):
             return Response(status=status.HTTP_404_NOT_FOUND)
 
 
-class DatasetView(APIView):
+class DatasetView(CacheDatasetMixin, APIView):
 
     def get(self, request, workflow_id):
         """
@@ -702,8 +706,7 @@ class DatasetView(APIView):
          - file(str): Specific file name to fetch from the dataset - Optional.
         """
         page = request.query_params.get("page", 1)
-        page_size = request.query_params.get("page_size", 10)
-        dataset = request.query_params.get("dataset", None)
+        page_size = request.query_params.get("perPage", 10)
         file = request.query_params.get("file", None)
 
         try:
@@ -715,101 +718,17 @@ class DatasetView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        hf_api = HfApi(token=settings.HUGGING_FACE_TOKEN)
+        cached_dataset_id = request.META.get("cached_dataset_id", None)
+        data = DatasetData.objects.filter(dataset_id=cached_dataset_id)
 
-        if not dataset:
-            workflow_id = request.query_params.get(
-                "workflow_id"
-            )  # Assuming workflow_id is fetched from query params
-            workflow_dataset = Dataset.objects.filter(workflow_id=workflow_id).first()
-            if not workflow_dataset:
-                return Response(status=status.HTTP_204_NO_CONTENT)
-            dataset = f"{workflow_dataset.huggingface_id}/{workflow_dataset.name}"
+        if file:
+            data = data.filter(file=file)
 
-        if not hf_api.repo_exists(repo_id=dataset, repo_type="dataset"):
-            return Response(
-                {"error": "Dataset does not exist."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        try:
-            repo_files = hf_api.list_repo_files(repo_id=dataset, repo_type="dataset")
-            csv_file_names = [
-                f
-                for f in repo_files
-                if f.endswith(".csv") and (file is None or f == file)
-            ]
+        paginated_data, total_count, total_pages = paginate_queryset(
+            data, page, page_size
+        )
 
-            csv_files = []
-
-            for csv_file_name in csv_file_names:
-                csv_files.append(
-                    hf_api.hf_hub_download(
-                        repo_id=dataset, repo_type="dataset", filename=csv_file_name
-                    )
-                )
-
-            if not csv_files:
-                return Response(
-                    {
-                        "pagination": {
-                            "page": page,
-                            "perPage": page_size,
-                            "totalPages": 0,
-                            "totalCount": 0,
-                        },
-                        "data": [],
-                    },
-                    status=status.HTTP_204_NO_CONTENT,
-                )
-
-            data_frames = []
-            for csv_file in csv_files:
-                df = pd.read_csv(csv_file)
-
-                if "id" not in df.columns:
-                    df["id"] = [str(uuid.uuid4()) for _ in range(len(df))]
-
-                data_frames.append(df)
-
-            if not data_frames:
-                return Response(
-                    {
-                        "pagination": {
-                            "page": page,
-                            "perPage": page_size,
-                            "totalPages": 0,
-                            "totalCount": 0,
-                        },
-                        "data": [],
-                    },
-                    status=status.HTTP_204_NO_CONTENT,
-                )
-
-            combined_df = (
-                pd.concat(data_frames) if len(data_frames) > 1 else data_frames[0]
-            )
-
-            total_count = len(combined_df)
-            total_pages = (total_count + page_size - 1) // page_size
-
-            start = (page - 1) * page_size
-            end = start + page_size
-            paginated_data = combined_df.iloc[start:end].to_dict(orient="records")
-
-            if not paginated_data:
-                return Response(
-                    {
-                        "pagination": {
-                            "page": page,
-                            "perPage": page_size,
-                            "totalPages": total_pages,
-                            "totalCount": total_count,
-                        },
-                        "data": [],
-                    },
-                    status=status.HTTP_204_NO_CONTENT,
-                )
-
+        if not paginated_data:
             return Response(
                 {
                     "pagination": {
@@ -818,10 +737,33 @@ class DatasetView(APIView):
                         "totalPages": total_pages,
                         "totalCount": total_count,
                     },
-                    "data": paginated_data,
+                    "data": [],
                 },
-                status=status.HTTP_200_OK,
+                status=status.HTTP_204_NO_CONTENT,
             )
 
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        serializer = DatasetDataSerializer(paginated_data, many=True)
+        return Response(
+            {
+                "pagination": {
+                    "page": page,
+                    "perPage": page_size,
+                    "totalPages": total_pages,
+                    "totalCount": total_count,
+                },
+                "data": serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    def post(self, request, workflow_id):
+        """
+        Gets a dataset from huggingface, and stores it in the local cache if not already not locally cached, and stores any changes in the dataset till it is committed
+        to HF just before training is triggered
+
+        Parameters:
+         - workflow_id(UUID): The ID of the workflow for which the dataset is to be fetched.
+        Body:
+         - data(json): k-v pairs for all non-id fields in the dataset
+         - dataset(str): The Hugging Face dataset. If this is not provided, then fall back to the workflow dataset- Optional.
+        """
