@@ -13,6 +13,7 @@ from django.shortcuts import get_object_or_404
 from pydantic import BaseModel
 from pydantic import ValidationError as PydanticValidationError
 from rest_framework import status
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
 from .models import Examples, WorkflowConfig
@@ -202,3 +203,106 @@ def get_model_cost(model):
     }
 
     return costs[model]
+
+
+def get_task_config(task=None):
+    task_config = {
+        "text_classification": {
+            "model": "BERT",
+            "task": "text_classification",
+            "labelStudioElement": {
+                "name": "Text Classification",
+                "config": {
+                    "choices": [
+                        "pest",
+                        "agricultural_scheme",
+                        "agriculture",
+                        "seed",
+                        "weather",
+                        "price",
+                        "non_agri"
+                    ]
+                },
+            },
+            "telemetryDataField": {
+                "input": "query",
+                "output": None
+            }
+        },
+        "ner": {
+            "model": "distilbert-finetuned",
+            "task": "NER",
+            "labelStudioElement": {
+                "name": "Named Entity Recognition",
+                "config": {
+                    "labels": [
+                        {"name": "pest", "value": "pest"},
+                        {"name": "crop", "value": "crop"},
+                        {"name": "seed_type", "value": "seed_type"},
+                        {"name": "email", "value": "email"},
+                        {"name": "phone_number", "value": "phone_number"},
+                        {"name": "time", "value": "time"},
+                        {"name": "date", "value": "date"}
+                    ]
+    },
+            },
+            "telemetryDataField": {
+                "input": "query",
+                "output": "NER"
+            }
+        },
+        "neural_coreference": {
+            "model": "FCoref",
+            "task": "Neural Coreference",
+            "labelStudioElement": {
+                "name": "Translation",
+                "config": {
+                    "leftHeader":"Read the previous conversation",
+                    "rightHeader": "Provide coreferenced text",
+                    "leftTextAreaName": "Previous conversation",
+                    "rightTextAreaName":"Coreferenced text"
+                },
+            },
+            "telemetryDataField": {
+                "input": "query",
+                "output": "coreferencedText"
+            }
+        },
+    }
+
+    keys = list(task_config.keys())
+    res = []
+    for key in keys:
+        res.append(task_config[key])
+
+    if task:
+        if task in task_config:
+            return [task_config[task]]
+        else:
+            return None
+    else:
+        return res
+
+
+# to get the mapping between the dataset columns and the input columns
+# task:{input_column: dataset_column,output_column: dataset_column}
+def get_task_mapping(task):
+    mapping = {
+        "text_classification": {"input_string": "question", "output_string": "choices"}
+    }
+    if task in mapping:
+        return mapping[task]
+    else:
+        return None
+
+
+def paginate_queryset(queryset, page, page_size):
+    total_count = queryset.count()
+    total_pages = (total_count + page_size - 1) // page_size
+
+    if page > total_pages or page < 1:
+        return [], total_count, total_pages
+
+    start = (page - 1) * page_size
+    end = start + page_size
+    return queryset[start:end], total_count, total_pages

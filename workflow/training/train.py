@@ -11,7 +11,8 @@ from django.utils import timezone
 from huggingface_hub import HfApi, login
 from transformers import TrainerCallback
 
-from .models import MLModel, Task, TrainingMetadata, User
+from workflow.models import MLModel, Task, TrainingMetadata, User
+
 from .tasks import get_task_class
 
 logger = get_task_logger(__name__)

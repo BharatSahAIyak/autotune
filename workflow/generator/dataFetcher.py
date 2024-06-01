@@ -9,7 +9,7 @@ from django.shortcuts import get_object_or_404
 from gevent import joinall, spawn
 from openai import OpenAI
 
-from .models import Examples, Prompt, Task, WorkflowConfig, Workflows
+from workflow.models import Examples, Prompt, Task, WorkflowConfig, Workflows
 
 logger = logging.getLogger(__name__)
 

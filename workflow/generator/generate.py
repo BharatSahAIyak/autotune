@@ -12,11 +12,11 @@ from django.conf import settings
 from gevent import joinall, spawn
 from huggingface_hub import CommitOperationAdd, HfApi
 
+from workflow.models import Dataset, Examples, Prompt, Task, Workflows
+from workflow.utils import create_pydantic_model, get_model_cost
 from workflowV2.utils import minio_client
 
 from .dataFetcher import DataFetcher
-from .models import Dataset, Examples, Prompt, Task, Workflows
-from .utils import create_pydantic_model, get_model_cost
 
 logger = logging.getLogger(__name__)
 

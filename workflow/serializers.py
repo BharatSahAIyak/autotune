@@ -2,7 +2,16 @@ from jsonschema import Validator
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
-from .models import Dataset, Examples, MLModel, Prompt, User, WorkflowConfig, Workflows
+from .models import (
+    Dataset,
+    DatasetData,
+    Examples,
+    MLModel,
+    Prompt,
+    User,
+    WorkflowConfig,
+    Workflows,
+)
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -175,3 +184,30 @@ class MLModelSerializer(serializers.ModelSerializer):
         fields = (
             "__all__"  # You can list fields individually if you want to exclude some
         )
+
+
+class DatasetDataSerializer(serializers.ModelSerializer):
+    dataset_id = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DatasetData
+        fields = [
+            "created_at",
+            "updated_at",
+            "id",
+            "file",
+            "input_string",
+            "output_string",
+            "input_json",
+            "output_json",
+            "dataset_id",
+        ]
+
+    def get_dataset_id(self, obj):
+        return obj.dataset_id
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        return {
+            key: value for key, value in representation.items() if value is not None
+        }

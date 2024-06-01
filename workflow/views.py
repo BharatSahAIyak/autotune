@@ -2,25 +2,42 @@ import ast
 import io
 import logging
 from decimal import Decimal, getcontext
+from typing import List
 
 import pandas as pd
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
+from huggingface_hub import HfApi
 from rest_framework import status
 from rest_framework.decorators import api_view
+from rest_framework.exceptions import NotFound
 from rest_framework.generics import ListAPIView, UpdateAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .dataFetcher import DataFetcher
-from .generate import process_task
-from .mixins import UserIDMixin
-from .models import Examples, MLModel, Prompt, Task, User, WorkflowConfig, Workflows
+from workflow.generator.dataFetcher import DataFetcher
+from workflow.generator.generate import process_task
+from workflow.training.train import train
+
+from .mixins import CacheDatasetMixin, UserIDMixin
+from .models import (
+    Dataset,
+    DatasetData,
+    Examples,
+    MLModel,
+    Prompt,
+    Task,
+    User,
+    WorkflowConfig,
+    Workflows,
+)
 from .serializers import (
+    DatasetDataSerializer,
     ExampleSerializer,
     MLModelSerializer,
     ModelDataSerializer,
@@ -30,11 +47,13 @@ from .serializers import (
     WorkflowDetailSerializer,
     WorkflowSerializer,
 )
-from .train import train
 from .utils import (
     create_pydantic_model,
     dehydrate_cache,
     get_model_cost,
+    get_task_config,
+    get_task_mapping,
+    paginate_queryset,
     validate_and_save_examples,
 )
 
@@ -661,10 +680,160 @@ class MLModelListView(APIView):
 
 class MLModelDetailView(APIView):
 
-    def get(self, request, id, format=None):
+    def get(self, request, model_id, format=None):
         try:
-            model = MLModel.objects.get(id=id)
+            model = MLModel.objects.get(id=model_id)
             serializer = MLModelSerializer(model)
             return Response(serializer.data)
         except MLModel.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
+
+
+class DatasetView(UserIDMixin, CacheDatasetMixin, APIView):
+
+    def get(self, request):
+        """
+        Fetches CSV files from a Hugging Face dataset repository, with pagination and optional file-specific fetching.
+
+        If 'dataset' is provided, downloads CSV files from the specified Hugging Face dataset (format: {username}/{dataset_name}).
+        If 'file' is provided, only this file's data is returned.
+
+        If no Hugging Face dataset is provided, then the dataset generated at autotune is returned, and if no dataset is available,
+        HTTP Status No Content is returned.
+
+        Parameters:
+         - workflow_id(UUID): The ID of the workflow for which the dataset is to be fetched.
+         - page(int): The page number for the dataset - Optional.
+         - page_size(int): The number of records per page - Optional.
+         - dataset(str): The Hugging Face dataset to be fetched - Optional.
+         - file(str): Specific file name to fetch from the dataset - Optional.
+        """
+        page = request.query_params.get("page", 1)
+        page_size = request.query_params.get("perPage", 10)
+        file = request.query_params.get("file", None)
+
+        try:
+            page = int(page)
+            page_size = int(page_size)
+        except ValueError:
+            return Response(
+                {
+                    "error": "Page and page size must be integers.",
+                    "workflow_id": request.META.get("workflow_id"),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        cached_dataset_id = request.META.get("cached_dataset_id", None)
+        data = DatasetData.objects.filter(dataset_id=cached_dataset_id)
+
+        if file:
+            data = data.filter(file=file)
+
+        paginated_data, total_count, total_pages = paginate_queryset(
+            data, page, page_size
+        )
+
+        if not paginated_data:
+            return Response(
+                {
+                    "workflow_id": request.META.get("workflow_id"),
+                    "pagination": {
+                        "page": page,
+                        "perPage": page_size,
+                        "totalPages": total_pages,
+                        "totalCount": total_count,
+                    },
+                    "data": [],
+                },
+                status=status.HTTP_204_NO_CONTENT,
+            )
+
+        serializer = DatasetDataSerializer(paginated_data, many=True)
+        return Response(
+            {
+                "workflow_id": request.META.get("workflow_id"),
+                "pagination": {
+                    "page": page,
+                    "perPage": page_size,
+                    "totalPages": total_pages,
+                    "totalCount": total_count,
+                },
+                "data": serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    def post(self, request):
+        """
+        Gets a dataset from huggingface, and stores it in the local cache if not already not locally cached, and stores any changes in the dataset till it is committed
+        to HF just before training is triggered
+
+        Parameters:
+         - workflow_id(UUID): The ID of the workflow for which the dataset is to be fetched.
+        Body:
+         - dataset(str): The Hugging Face dataset. If this is not provided, then fall back to the workflow dataset- Optional.
+        """
+        input = request.data.get("input", None)
+        output = request.data.get("output", None)
+
+        if not input:
+            return Response(
+                {"error": "Input is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not output:
+            return Response(
+                {
+                    "error": "Output is required.",
+                    "workflow_id": request.META.get("workflow_id"),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # will be a valid dataset id, handled in the mixin
+        cached_dataset_id = request.META.get("cached_dataset_id", None)
+        dataset_object = Dataset.objects.get(id=cached_dataset_id)
+        task = dataset_object.type
+        task_mapping = get_task_mapping(task)
+        keys = list(task_mapping.keys())
+
+        record_data = DatasetData(dataset=dataset_object, file="train.csv")
+
+        setattr(record_data, keys[0], input)
+        setattr(record_data, keys[1], output)
+
+        record_data.save()
+
+        return Response(
+            {
+                "message": "Dataset data saved successfully.",
+                "workflow_id": request.META.get("workflow_id"),
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class ConfigView(APIView):
+    def get(self, request):
+        """
+        Returns the config of all the tasks or a specific task if provided.
+
+        Args:
+            task: task to get the config for -OPTIONAL
+
+        Returns:
+            Array of the configs for all the tasks or a single task in an array
+        """
+        task = request.query_params.get("task", None)
+        if task is None:
+            return Response({"data": get_task_config()}, status=status.HTTP_200_OK)
+        else:
+            task_mapping = get_task_mapping(task)
+            if task_mapping:
+                return Response({"data": task_mapping}, status=status.HTTP_200_OK)
+            else:
+                return Response(
+                    {"error": "Task not found"}, status=status.HTTP_404_NOT_FOUND
+                )
