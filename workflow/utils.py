@@ -212,24 +212,61 @@ def get_task_config(task=None):
             "task": "text_classification",
             "labelStudioElement": {
                 "name": "Text Classification",
-                "config": {"query": "Query", "choices": ["Choice 1", "Choice 2"]},
+                "config": {
+                    "choices": [
+                        "pest",
+                        "agricultural_scheme",
+                        "agriculture",
+                        "seed",
+                        "weather",
+                        "price",
+                        "non_agri"
+                    ]
+                },
             },
+            "telemetryDataField": {
+                "input": "query",
+                "output": None
+            }
         },
-        "NER": {
+        "ner": {
             "model": "distilbert-finetuned",
             "task": "NER",
             "labelStudioElement": {
                 "name": "Named Entity Recognition",
-                "config": {"labels": [{"name": "", "value": ""}]},
+                "config": {
+                    "labels": [
+                        {"name": "pest", "value": "pest"},
+                        {"name": "crop", "value": "crop"},
+                        {"name": "seed_type", "value": "seed_type"},
+                        {"name": "email", "value": "email"},
+                        {"name": "phone_number", "value": "phone_number"},
+                        {"name": "time", "value": "time"},
+                        {"name": "date", "value": "date"}
+                    ]
+    },
             },
+            "telemetryDataField": {
+                "input": "query",
+                "output": "NER"
+            }
         },
-        "translation": {
+        "neural_coreference": {
             "model": "FCoref",
-            "task": "Neural coreference",
+            "task": "Neural Coreference",
             "labelStudioElement": {
                 "name": "Translation",
-                "config": {"from": "english", "to": "odia"},
+                "config": {
+                    "leftHeader":"Read the previous conversation",
+                    "rightHeader": "Provide coreferenced text",
+                    "leftTextAreaName": "Previous conversation",
+                    "rightTextAreaName":"Coreferenced text"
+                },
             },
+            "telemetryDataField": {
+                "input": "query",
+                "output": "coreferencedText"
+            }
         },
     }
 
