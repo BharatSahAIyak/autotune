@@ -197,6 +197,8 @@ CORS_ORIGIN_WHITELIST = (
     "localhost",
 )
 
+CORS_ALLOW_ALL_ORIGINS = True
+
 CSRF_TRUSTED_ORIGINS = ["http://localhost:8000"]
 
 level_styles = {
