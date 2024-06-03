@@ -2,26 +2,45 @@ import ast
 import io
 import logging
 from decimal import Decimal, getcontext
+from typing import List
 
 import pandas as pd
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
+from huggingface_hub import HfApi
 from rest_framework import status
 from rest_framework.decorators import api_view
+from rest_framework.exceptions import NotFound
 from rest_framework.generics import ListAPIView, UpdateAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .celery_task import process_task
-from .dataFetcher import DataFetcher
-from .mixins import UserIDMixin
-from .models import Examples, Prompt, Task, WorkflowConfig, Workflows
+from workflow.generator.dataFetcher import DataFetcher
+from workflow.generator.generate import process_task
+from workflow.training.train import train
+
+from .mixins import CacheDatasetMixin, UserIDMixin
+from .models import (
+    Dataset,
+    DatasetData,
+    Examples,
+    MLModel,
+    Prompt,
+    Task,
+    User,
+    WorkflowConfig,
+    Workflows,
+)
 from .serializers import (
+    DatasetDataSerializer,
     ExampleSerializer,
+    MLModelSerializer,
+    ModelDataSerializer,
     PromptSerializer,
     UserSerializer,
     WorkflowConfigSerializer,
@@ -32,6 +51,9 @@ from .utils import (
     create_pydantic_model,
     dehydrate_cache,
     get_model_cost,
+    get_task_config,
+    get_task_mapping,
+    paginate_queryset,
     validate_and_save_examples,
 )
 
@@ -42,105 +64,43 @@ def index():
     return HttpResponse("Hello, world. You're at the workflow index.")
 
 
-@csrf_exempt
-@api_view(["POST"])
-def create_workflow_with_prompt(request):
-    """
-    Creates a new workflow and its associated prompt
-    Parameters:
-    - request (HttpRequest): The HTTP request object containing the JSON payload.
+class CreateWorkflowView(UserIDMixin, APIView):
 
-    Request JSON payload format:
-    {
-        "workflow": {
-            "workflow_name": "Data Analysis Workflow",
-            "workflow_config": "QnA",
-            "total_examples": 1000,
-            "split": [
-                70,
-                20,
-                10
-            ],
-            "llm_model": "gpt-4-0125-preview",
-            "cost": 200,
-            "tags": [
-                "data analysis",
-                "machine learning"
-            ],
-            "user": "429088bd-73c4-454a-91c7-e29081b36531"
-        },
-        "user_prompt": "Create questions on world war 2 for class 8 students",
-        "examples": [
+    def post(self, request):
+        with transaction.atomic():
+            user: User = request.META["user"]
+
+            workflow_data = request.data.get("workflow")
+            workflow_data["user"] = user.user_id
+            workflow_serializer = WorkflowSerializer(
+                data=request.data.get("workflow", {})
+            )
+            if workflow_serializer.is_valid(raise_exception=True):
+                workflow = workflow_serializer.save()
+
+                prompt_data = {
+                    "user_prompt": request.data.get("user_prompt", ""),
+                    "workflow": workflow.pk,
+                }
+
+                prompt_serializer = PromptSerializer(data=prompt_data)
+                if prompt_serializer.is_valid(raise_exception=True):
+                    prompt_serializer.save()
+
+                    return Response(
+                        {
+                            "workflow": workflow_serializer.data,
+                            "prompt": prompt_serializer.data,
+                        },
+                        status=status.HTTP_201_CREATED,
+                    )
+
+        return Response(
             {
-                "text": "Example question about data analysis?",
-                "label": "positive",
-                "reason": "Relevant to the domain of data analysis"
+                "error": "Invalid data for workflow or prompt",
             },
-            {
-                "text": "Example question not related to data analysis.",
-                "label": "negative",
-                "reason": "Not relevant to the domain"
-            }
-            // Additional examples can be added here (This is Optional)
-        ]
-    }
-
-    Returns:
-        {
-          "workflow": {
-            "workflow_id": "123e4567-e89b-12d3-a456-426614174000",
-            "workflow_name": "Data Analysis Workflow",
-            "total_examples": 1000,
-            "split": [70, 20, 10],
-            "llm_model": "gpt-4-0125-preview",
-            "cost": 200,
-            "tags": ["data analysis", "machine learning"],
-            "user": "uuid-of-the-user",
-            "created_at": "2024-03-07T12:00:00Z",
-            "updated_at": "2024-03-07T12:00:00Z"
-          },
-          "user_prompt": "User provided information to replace {{.DocumentChunk}}",
-          "examples": [ // this is Optional
-            {
-                "example_id": "456f7890-f123-45h6-i789-012j345678k9",
-                "text": "Example question about data analysis?",
-                "label": "positive",
-                "reason": "Relevant to the domain of data analysis",
-                "workflow": "123e4567-e89b-12d3-a456-426614174000"
-            },
-            // Additional examples if provided
-          ]
-        }
-    """
-
-    with transaction.atomic():
-        workflow_serializer = WorkflowSerializer(data=request.data.get("workflow", {}))
-        if workflow_serializer.is_valid(raise_exception=True):
-            workflow = workflow_serializer.save()
-
-            prompt_data = {
-                "user_prompt": request.data.get("user_prompt", ""),
-                "workflow": workflow.pk,
-            }
-
-            prompt_serializer = PromptSerializer(data=prompt_data)
-            if prompt_serializer.is_valid(raise_exception=True):
-                prompt_serializer.save()
-
-                return Response(
-                    {
-                        "workflow": workflow_serializer.data,
-                        "prompt": prompt_serializer.data,
-                    },
-                    status=status.HTTP_201_CREATED,
-                )
-
-    return Response(
-        {
-            "error": "Invalid data for workflow or prompt",
-        },
-        status=status.HTTP_400_BAD_REQUEST,
-    )
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -680,7 +640,200 @@ def add_user(request):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-@api_view(["POST"])
-def train(request):
-    # TBD
-    return JsonResponse({"message": "hey"})
+class TrainModelView(UserIDMixin, APIView):
+
+    def post(self, request, *args, **kwargs):
+        serializer = ModelDataSerializer(data=request.data)
+        user_id = request.META["user"].user_id
+
+        if serializer.is_valid():
+            data = serializer.validated_data
+            logger.info(f"Training model with data: {data}")
+            data["workflow_id"] = str(data["workflow_id"])
+            workflow_id = data["workflow_id"]
+
+            training_task = request.data.get("training_task", "text_classification")
+
+            task = Task.objects.create(
+                name=f"Training Workflow {workflow_id}",
+                status="STARTING",
+                workflow_id=workflow_id,
+            )
+
+            train.apply_async(
+                args=[data, user_id, training_task],
+                task_id=str(task.id),
+            )
+
+            return Response({"taskId": task.id}, status=status.HTTP_202_ACCEPTED)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class MLModelListView(APIView):
+
+    def get(self, request, format=None):
+        models = MLModel.objects.all()
+        serializer = MLModelSerializer(models, many=True)
+        return Response(serializer.data)
+
+
+class MLModelDetailView(APIView):
+
+    def get(self, request, model_id, format=None):
+        try:
+            model = MLModel.objects.get(id=model_id)
+            serializer = MLModelSerializer(model)
+            return Response(serializer.data)
+        except MLModel.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+
+class DatasetView(UserIDMixin, CacheDatasetMixin, APIView):
+
+    def get(self, request):
+        """
+        Fetches CSV files from a Hugging Face dataset repository, with pagination and optional file-specific fetching.
+
+        If 'dataset' is provided, downloads CSV files from the specified Hugging Face dataset (format: {username}/{dataset_name}).
+        If 'file' is provided, only this file's data is returned.
+
+        If no Hugging Face dataset is provided, then the dataset generated at autotune is returned, and if no dataset is available,
+        HTTP Status No Content is returned.
+
+        Parameters:
+         - workflow_id(UUID): The ID of the workflow for which the dataset is to be fetched.
+         - page(int): The page number for the dataset - Optional.
+         - page_size(int): The number of records per page - Optional.
+         - dataset(str): The Hugging Face dataset to be fetched - Optional.
+         - file(str): Specific file name to fetch from the dataset - Optional.
+        """
+        page = request.query_params.get("page", 1)
+        page_size = request.query_params.get("perPage", 10)
+        file = request.query_params.get("file", None)
+
+        try:
+            page = int(page)
+            page_size = int(page_size)
+        except ValueError:
+            return Response(
+                {
+                    "error": "Page and page size must be integers.",
+                    "workflow_id": request.META.get("workflow_id"),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        cached_dataset_id = request.META.get("cached_dataset_id", None)
+        data = DatasetData.objects.filter(dataset_id=cached_dataset_id)
+
+        if file:
+            data = data.filter(file=file)
+
+        paginated_data, total_count, total_pages = paginate_queryset(
+            data, page, page_size
+        )
+
+        if not paginated_data:
+            return Response(
+                {
+                    "workflow_id": request.META.get("workflow_id"),
+                    "pagination": {
+                        "page": page,
+                        "perPage": page_size,
+                        "totalPages": total_pages,
+                        "totalCount": total_count,
+                    },
+                    "data": [],
+                },
+                status=status.HTTP_204_NO_CONTENT,
+            )
+
+        serializer = DatasetDataSerializer(paginated_data, many=True)
+        return Response(
+            {
+                "workflow_id": request.META.get("workflow_id"),
+                "pagination": {
+                    "page": page,
+                    "perPage": page_size,
+                    "totalPages": total_pages,
+                    "totalCount": total_count,
+                },
+                "data": serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    def post(self, request):
+        """
+        Gets a dataset from huggingface, and stores it in the local cache if not already not locally cached, and stores any changes in the dataset till it is committed
+        to HF just before training is triggered
+
+        Parameters:
+         - workflow_id(UUID): The ID of the workflow for which the dataset is to be fetched.
+        Body:
+         - dataset(str): The Hugging Face dataset. If this is not provided, then fall back to the workflow dataset- Optional.
+        """
+        input = request.data.get("input", None)
+        output = request.data.get("output", None)
+
+        if not input:
+            return Response(
+                {"error": "Input is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not output:
+            return Response(
+                {
+                    "error": "Output is required.",
+                    "workflow_id": request.META.get("workflow_id"),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # will be a valid dataset id, handled in the mixin
+        cached_dataset_id = request.META.get("cached_dataset_id", None)
+        dataset_object = Dataset.objects.get(id=cached_dataset_id)
+        task = dataset_object.type
+        task_mapping = get_task_mapping(task)
+        keys = list(task_mapping.keys())
+
+        record_data = DatasetData(dataset=dataset_object, file="train.csv")
+
+        setattr(record_data, keys[0], input)
+        setattr(record_data, keys[1], output)
+
+        record_data.save()
+
+        return Response(
+            {
+                "message": "Dataset data saved successfully.",
+                "workflow_id": request.META.get("workflow_id"),
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class ConfigView(APIView):
+    def get(self, request):
+        """
+        Returns the config of all the tasks or a specific task if provided.
+
+        Args:
+            task: task to get the config for -OPTIONAL
+
+        Returns:
+            Array of the configs for all the tasks or a single task in an array
+        """
+        task = request.query_params.get("task", None)
+        if task is None:
+            return Response({"data": get_task_config()}, status=status.HTTP_200_OK)
+        else:
+            task_mapping = get_task_mapping(task)
+            if task_mapping:
+                return Response({"data": task_mapping}, status=status.HTTP_200_OK)
+            else:
+                return Response(
+                    {"error": "Task not found"}, status=status.HTTP_404_NOT_FOUND
+                )

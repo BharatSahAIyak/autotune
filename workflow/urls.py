@@ -2,24 +2,28 @@ from django.urls import path
 
 from . import views
 from .views import (
+    CreateWorkflowView,
+    DatasetView,
     ExamplesView,
     GenerateTaskView,
     IterateWorkflowView,
+    MLModelDetailView,
+    MLModelListView,
     PromptViewSet,
     SingleWorkflowView,
+    TrainModelView,
     WorkflowConfigView,
     WorkflowDuplicateView,
     WorkflowListView,
     WorkflowSearchView,
     WorkflowStatusView,
     WorkflowUpdateView,
-    create_workflow_with_prompt,
 )
 
 urlpatterns = [
     # General routes
     path("", WorkflowListView.as_view(), name="workflow-list"),
-    path("create/", create_workflow_with_prompt, name="create_workflow"),
+    path("create/", CreateWorkflowView.as_view(), name="create_workflow"),
     # Workflow-related routes
     path(
         "<uuid:workflow_id>/",
@@ -72,4 +76,7 @@ urlpatterns = [
         name="dehydrate-cache",
     ),
     path("user/", views.add_user, name="add-user"),
+    path("train", TrainModelView.as_view(), name="train"),
+    path("models/", MLModelListView.as_view(), name="model-list"),
+    path("models/<uuid:model_id>/", MLModelDetailView.as_view(), name="model-detail"),
 ]

@@ -42,19 +42,21 @@ class User(models.Model):
     role = models.CharField(max_length=255, default="user")
 
 
-class MLModel(models.Model):
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
-    huggingface_id = models.CharField(null=True, blank=True)
-    uploaded_at = models.DateTimeField(null=True, blank=True)
-    latest_commit_hash = models.UUIDField(null=True, blank=True)
-    is_trained_at_autotune = models.BooleanField(default=False)
-    name = models.CharField(max_length=255)
-    is_locally_cached = models.BooleanField(default=False)
-
-
 class Dataset(models.Model):
+    class DatasetType(models.TextChoices):
+        ASR = "ASR", _("ASR")
+        ASR_NGRAM = "ASR_NGRAM", _("ASR_NGRAM")
+        TRANSLATE = "TRANSLATE", _("TRANSLATE")
+        SPELL_CHECK = "SPELL_CHECK", _("SPELL_CHECK")
+        NER = "NER", _("NER")
+        EMBEDDING = "EMBEDDING", _("EMBEDDING")
+        RERANKER = "RERANKER", _("RERANKER")
+        CLASSIFIER = "CLASSIFIER", _("CLASSIFIER")
+        SEMANTIC_CHUNKING = "SEMANTIC_CHUNKING", _("SEMANTIC_CHUNKING")
+        NEURAL_COREF = "NEURAL_COREF", _("NEURAL_COREF")
+        LANGUAGE_DETECTION = "LANGUAGE_DETECTION", _("LANGUAGE_DETECTION")
+        SYNTHETIC = "SYNTHETIC", _("SYNTHETIC")  # For dataset generated at autotune
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
@@ -69,6 +71,31 @@ class Dataset(models.Model):
     workflow = models.ForeignKey(
         "Workflows", on_delete=models.CASCADE, related_name="datasets"
     )
+    type = models.CharField(
+        max_length=50, choices=DatasetType.choices, default=DatasetType.SYNTHETIC
+    )
+
+
+class MLModel(models.Model):
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
+    name = models.CharField(max_length=255)
+    huggingface_id = models.CharField(null=True, blank=True)
+    uploaded_at = models.DateTimeField(null=True, blank=True)
+    latest_commit_hash = models.UUIDField(null=True, blank=True)
+    is_trained_at_autotune = models.BooleanField(default=False)
+    is_locally_cached = models.BooleanField(default=False)
+    trained_on = models.ForeignKey(
+        Dataset,
+        related_name="trained_on",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+    )
+    label_studio_component = models.TextField(null=True, blank=True)
+    rendering_config = models.TextField(null=True, blank=True)
+    label_studio_comp = models.TextField(null=True, blank=True)
 
 
 class WorkflowConfig(models.Model):
@@ -88,6 +115,7 @@ class WorkflowConfig(models.Model):
 
 
 class Workflows(models.Model):
+
     class WorkflowStatus(models.TextChoices):
         SETUP = "SETUP", _("Setup")
         ITERATION = "ITERATION", _("Iteration")
@@ -97,22 +125,34 @@ class Workflows(models.Model):
         PUSHING_MODEL = "PUSHING_MODEL", _("Pushing Model")
         IDLE = "IDLE", _("Idle")
 
+    class WorkflowType(models.TextChoices):
+        COMPLETE = "COMPLETE", _("Complete")
+        TRAINING = "TRAINING", _("Training")
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     workflow_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     workflow_name = models.CharField(max_length=255)
     workflow_config = models.ForeignKey(
-        WorkflowConfig, on_delete=models.CASCADE, related_name="workflows"
+        WorkflowConfig,
+        on_delete=models.CASCADE,
+        related_name="workflows",
+        null=True,
+        blank=True,
     )
-    tags = ArrayField(models.CharField(max_length=255))
-    total_examples = models.IntegerField()
+    tags = ArrayField(models.CharField(max_length=255), null=True, blank=True)
+    total_examples = models.IntegerField(null=True, blank=True)
     split = ArrayField(
         models.IntegerField(validators=[MinValueValidator(0), MaxValueValidator(100)]),
         default=default_split,
         validators=[validate_split],
+        null=True,
+        blank=True,
     )
     llm_model = models.CharField(
-        max_length=255, choices=[(model, model) for model in LLM_MODELS]
+        max_length=255,
+        choices=[(model, model) for model in LLM_MODELS],
+        default="gpt-3.5-turbo",
     )
     cost = models.DecimalField(decimal_places=4, max_digits=10, default=0)
     estimated_dataset_cost = models.DecimalField(
@@ -130,6 +170,10 @@ class Workflows(models.Model):
         default=WorkflowStatus.SETUP,
     )
 
+    type = models.CharField(
+        max_length=50, choices=WorkflowType.choices, default=WorkflowType.COMPLETE
+    )
+
     status_details = models.JSONField(default=dict)
     latest_prompt = models.ForeignKey(
         "Prompt",
@@ -137,6 +181,24 @@ class Workflows(models.Model):
         null=True,
         related_name="latest_for_workflow",
     )
+
+
+class DatasetData(models.Model):
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    file = models.CharField(max_length=255, null=True, blank=True)
+    input_string = models.TextField(blank=True, null=True)
+    output_string = models.TextField(blank=True, null=True)
+    input_json = models.JSONField(blank=True, null=True)
+    output_json = models.JSONField(blank=True, null=True)
+    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE, related_name="data")
+
+    def save(self, *args, **kwargs):
+        # if self.dataset.type == Dataset.DatasetType.ASR:
+        # We can define the fields needed for different dataset types here
+
+        super().save(*args, **kwargs)
 
 
 class Prompt(models.Model):
@@ -186,6 +248,16 @@ class Task(models.Model):
     )
     generated_samples = models.IntegerField(default=0)
     total_samples = models.IntegerField(default=0)
+
+
+class TrainingMetadata(models.Model):
+    trained_at = models.DateTimeField(auto_now_add=True)
+    model = models.ForeignKey(
+        MLModel, on_delete=models.CASCADE, related_name="metadata"
+    )
+    logs = models.JSONField(default=dict)
+    metrics = models.JSONField(default=dict)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="training")
 
 
 class Log(models.Model):

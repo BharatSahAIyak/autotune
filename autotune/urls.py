@@ -21,7 +21,7 @@ from drf_yasg import openapi
 from drf_yasg.views import get_schema_view
 from rest_framework import permissions
 
-from workflow.views import TaskView
+from workflow.views import ConfigView, DatasetView, TaskView
 
 schema_view = get_schema_view(
     openapi.Info(
@@ -52,4 +52,6 @@ urlpatterns = [
     path("task/status/<uuid:task_id>/", TaskView.as_view(), name="task-status"),
     path("v1/workflow/", include(("workflow.urls", "workflow"), namespace="v1")),
     path("v2/workflow/", include(("workflowV2.urls", "workflowV2"), namespace="v2")),
+    path("config", ConfigView.as_view(), name="config"),
+    path("datasets/", DatasetView.as_view(), name="dataset-list"),
 ]

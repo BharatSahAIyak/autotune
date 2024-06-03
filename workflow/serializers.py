@@ -2,7 +2,16 @@ from jsonschema import Validator
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
-from .models import Dataset, Examples, MLModel, Prompt, User, WorkflowConfig, Workflows
+from .models import (
+    Dataset,
+    DatasetData,
+    Examples,
+    MLModel,
+    Prompt,
+    User,
+    WorkflowConfig,
+    Workflows,
+)
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -129,3 +138,76 @@ class WorkflowConfigSerializer(serializers.ModelSerializer):
             "fields",
             "model_string",
         )
+
+
+class ModelDataSerializer(serializers.Serializer):
+    dataset = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    model = serializers.CharField(
+        max_length=255
+    )  # TODO: needs to be a valid model on huggingface
+    model_id = serializers.UUIDField(
+        required=False, allow_null=True
+    )  # for an existing model
+    epochs = serializers.FloatField(required=False, default=1)
+    save_path = serializers.CharField(max_length=255)
+    task = serializers.ChoiceField(
+        choices=["text_classification", "seq2seq", "embedding"]
+    )  # TODO: Create a constant for TASKS
+    version = serializers.CharField(max_length=50, required=False, default="main")
+    workflow_id = serializers.UUIDField(required=False, allow_null=True)
+
+    def validate(self, data):
+        # TODO: needs to be a valid dataset on huggingface
+        # TODO: Add validation for model_id
+        dataset = data.get("dataset")
+        workflow_id = data.get("workflow_id")
+
+        if not dataset and not workflow_id:
+            raise serializers.ValidationError(
+                "Either dataset or workflow_id must be provided."
+            )
+
+        if not dataset and workflow_id:
+            workflow_dataset = Dataset.objects.filter(workflow_id=workflow_id).first()
+            if not workflow_dataset:
+                raise serializers.ValidationError(
+                    "No dataset associated with the provided workflow_id."
+                )
+            data["dataset"] = workflow_dataset.name
+
+        return data
+
+
+class MLModelSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MLModel
+        fields = (
+            "__all__"  # You can list fields individually if you want to exclude some
+        )
+
+
+class DatasetDataSerializer(serializers.ModelSerializer):
+    dataset_id = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DatasetData
+        fields = [
+            "created_at",
+            "updated_at",
+            "id",
+            "file",
+            "input_string",
+            "output_string",
+            "input_json",
+            "output_json",
+            "dataset_id",
+        ]
+
+    def get_dataset_id(self, obj):
+        return obj.dataset_id
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        return {
+            key: value for key, value in representation.items() if value is not None
+        }
