@@ -3,44 +3,54 @@ name: Build and Push Docker Image
 on:
   push:
     branches:
+      - main
       - dev
-      - prod
+  release:
+    types: [published]
 env:
-  DOCKER_USERNAME: ${{ github.actor }}
-  DOCKER_IMAGE_NAME: ${{ github.repository }}
-  DOCKER_REGISTRY: ghcr.io
-  DOCKER_IMAGE_TAG: ${{ github.ref_name }}
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    # Sets the permissions granted to the `GITHUB_TOKEN` for the actions in this job.
+    permissions:
+      contents: read
+      packages: write
     steps:
-      - id: lower-repo
-        shell: pwsh
-        run: |
-          "::set-output name=repository::$($env:DOCKER_IMAGE_NAME.ToLowerInvariant())"
-
       - name: Checkout code
         uses: actions/checkout@v2
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      - name: Login to Docker registry
-        uses: docker/login-action@v1
+      - name: Log in to the Container registry
+        uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
         with:
-          registry: ${{ env.DOCKER_REGISTRY }}
-          username: ${{ env.DOCKER_USERNAME }}
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
           password: ${{ secrets.PAT }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # minimal
+            type=pep440,pattern={{version}},value=${{ github.ref_name }},enable=${{ github.event_name == 'release' }}
+            # branch event
+            type=ref,event=branch
+            type=raw,value=latest,enable=${{ github.event_name == 'release' }}
 
       - name: Build and Push Docker image
         uses: docker/build-push-action@v4
         with:
-          build-args: |
-            "SERVER_RELEASE_VERSION=${{ github.sha }}"
+          # build-args:
           context: .
           push: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          tags: ${{ env.DOCKER_REGISTRY }}/${{ steps.lower-repo.outputs.repository }}:${{env.DOCKER_IMAGE_TAG}}
-          labels: org.opencontainers.image.source=https://github.com/${{steps.lower-repo.outputs.repository}}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
