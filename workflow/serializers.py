@@ -175,3 +175,40 @@ class MLModelSerializer(serializers.ModelSerializer):
         fields = (
             "__all__"  # You can list fields individually if you want to exclude some
         )
+
+
+class DatasetGenerationNegativeMinerSerializer(serializers.Serializer):
+    workflow_id = serializers.UUIDField(required=False, allow_null=True)
+    dataset = serializers.CharField(max_length=255, required=True)
+    save_path = serializers.CharField(max_length=255)
+    model_checkpoint = serializers.CharField(
+        max_length=255,
+        default="colbert-ir/colbertv2.0",
+        required=False,
+        allow_blank=True,
+    )
+    model_name = serializers.CharField(
+        max_length=255,
+        default="NegativeMinerModel",
+        required=False,
+        allow_blank=True,
+    )
+
+    def validate(self, data):
+        dataset = data.get("dataset")
+        workflow_id = data.get("workflow_id")
+
+        if not dataset and not workflow_id:
+            raise serializers.ValidationError(
+                "Either dataset or workflow_id must be provided."
+            )
+
+        if not dataset and workflow_id:
+            workflow_dataset = Dataset.objects.filter(workflow_id=workflow_id).first()
+            if not workflow_dataset:
+                raise serializers.ValidationError(
+                    "No dataset associated with the provided workflow_id."
+                )
+            data["dataset"] = workflow_dataset.name
+
+        return data

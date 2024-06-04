@@ -3,6 +3,7 @@ from django.urls import path
 from . import views
 from .views import (
     CreateWorkflowView,
+    DatasetGenerationView,
     ExamplesView,
     GenerateTaskView,
     IterateWorkflowView,
@@ -78,4 +79,5 @@ urlpatterns = [
     path("train", TrainModelView.as_view(), name="train"),
     path("models/", MLModelListView.as_view(), name="model-list"),
     path("models/<uuid:id>/", MLModelDetailView.as_view(), name="model-detail"),
+    path("dataset/generate", DatasetGenerationView.as_view(), name="dataset-generate"),
 ]

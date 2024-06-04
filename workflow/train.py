@@ -25,9 +25,9 @@ def train(self, req_data, user_id, training_task):
     task.save()
     meta = train_model(self, req_data, task_id)
     task.status = "PUSHING"
-    task.save()
+    task.save() 
     try:
-        huggingface_id = req_data.get("save_path").split("/")[0]
+        huggingface_id =req_data.get("save_path").split("/")[0]
         model_name = req_data.get("save_path").split("/")[-1]
 
         model_id = req_data.get("model_id")

@@ -16,11 +16,22 @@ from rest_framework.generics import ListAPIView, UpdateAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .dataset import mine_negatives
 from .dataFetcher import DataFetcher
 from .generate import process_task
 from .mixins import UserIDMixin
-from .models import Examples, MLModel, Prompt, Task, User, WorkflowConfig, Workflows
+from .models import (
+    DatasetCreationTask,
+    Examples,
+    MLModel,
+    Prompt,
+    Task,
+    User,
+    WorkflowConfig,
+    Workflows,
+)
 from .serializers import (
+    DatasetGenerationNegativeMinerSerializer,
     ExampleSerializer,
     MLModelSerializer,
     ModelDataSerializer,
@@ -668,3 +679,34 @@ class MLModelDetailView(APIView):
             return Response(serializer.data)
         except MLModel.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
+
+
+class DatasetGenerationView(UserIDMixin, APIView):
+
+    def post(self, request):
+        # TODO: Throw error if request.data.task is not present or invalid
+        serializer = DatasetGenerationNegativeMinerSerializer(data=request.data)
+        # if request.data.task == "chunking":
+        #     serializer = DataGenerationChunkingSerializer(data=request.data)
+        # elif request.data.task == "negative_mining":
+        #     serializer = DatasetGenerationNegativeMinerSerializer(data=request.data)
+        user_id = request.META["user"].user_id
+
+        # print(request.data)
+
+        # return Response({"pos": "success"}, status=status.HTTP_202_ACCEPTED)
+        if serializer.is_valid():
+            data = serializer.validated_data
+            logger.info(f"Generating Dataset with data: {data}")
+            data["workflow_id"] = str(data["workflow_id"])
+            workflow_id = data["workflow_id"]
+            task = DatasetCreationTask.objects.create(
+                name=f"Dataset Generation Workflow {workflow_id}",
+                status="STARTING",
+                workflow_id=workflow_id,
+            )
+            mine_negatives.apply_async(
+                args=[data, user_id],
+                task_id=str(task.id),
+            )
+            return Response({"taskId": task.id}, status=status.HTTP_202_ACCEPTED)
