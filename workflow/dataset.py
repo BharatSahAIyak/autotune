@@ -65,17 +65,18 @@ def mine_negatives(self, request_data, user_id):
             pretrained_model_name=model_checkpoint,
         )
         trainer.prepare_training_data(
-            raw_data=pairs,
+            # TODO: Change here to all pairs
+            raw_data=pairs[:100],
             data_out_path=output_data_path,
             all_documents=collection,
             num_new_negatives=10,
             mine_hard_negatives=True,
             positive_label="pos",
             negative_label="neg",
-        )
+    )
         task.status = "UPLOADING"
         ## Upload to huggingface
-
+        logger.info(f"Uploading mined data to {save_path}")
         api = HfApi(endpoint="https://huggingface.co", token=hf_token)
         api.create_repo(repo_id=save_path, repo_type="dataset", exist_ok=True)
         api.upload_folder(
@@ -86,6 +87,29 @@ def mine_negatives(self, request_data, user_id):
         )
         task.status = "COMPLETED"
         task.save()
+
+    except Exception as e:
+        logger.error(f"Error mining negatives for task {task_id}: {str(e)}")
+        raise self.retry(exc=e, countdown=60, max_retries=5)
+
+
+@shared_task(bind=True, max_retries=settings.CELERY_MAX_RETRIES, retry_backoff=True)
+def generate_chunks(self, request_data, user_id):
+    try:
+        task_id = self.request.id
+        task = DatasetCreationTask.objects.get(id=task_id)
+        
+        # file = request_data["file"]
+        save_path = request_data["save_path"]
+        # model_checkpoint = request_data["model_checkpoint"]
+        # model_name = request_data["model_name"]
+        # hf_token = settings.HUGGING_FACE_TOKEN
+        # login(token=hf_token)
+        output_data_path = "./mined_data/"
+        task.status = "PROCESSING"
+        task.save()
+        
+        
 
     except Exception as e:
         logger.error(f"Error mining negatives for task {task_id}: {str(e)}")

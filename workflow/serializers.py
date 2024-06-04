@@ -212,3 +212,13 @@ class DatasetGenerationNegativeMinerSerializer(serializers.Serializer):
             data["dataset"] = workflow_dataset.name
 
         return data
+
+
+class DataGenerationChunkingSerializer(serializers.Serializer):
+    workflow_id = serializers.UUIDField(required=False, allow_null=True)
+    file = serializers.FileField(required=False, allow_empty_file=False)
+    task = serializers.CharField(max_length=255, required=True)
+    save_path = serializers.CharField(max_length=255)
+
+    def validate(self, data):
+        return data

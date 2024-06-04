@@ -31,6 +31,7 @@ from .models import (
     Workflows,
 )
 from .serializers import (
+    DataGenerationChunkingSerializer,
     DatasetGenerationNegativeMinerSerializer,
     ExampleSerializer,
     MLModelSerializer,
@@ -685,16 +686,12 @@ class DatasetGenerationView(UserIDMixin, APIView):
 
     def post(self, request):
         # TODO: Throw error if request.data.task is not present or invalid
-        serializer = DatasetGenerationNegativeMinerSerializer(data=request.data)
-        # if request.data.task == "chunking":
-        #     serializer = DataGenerationChunkingSerializer(data=request.data)
-        # elif request.data.task == "negative_mining":
-        #     serializer = DatasetGenerationNegativeMinerSerializer(data=request.data)
+        if request.data["task"] == "chunking":
+            serializer = DataGenerationChunkingSerializer(data=request.data)
+        elif request.data["task"] == "negative_mining":
+            serializer = DatasetGenerationNegativeMinerSerializer(data=request.data)
         user_id = request.META["user"].user_id
-
-        # print(request.data)
-
-        # return Response({"pos": "success"}, status=status.HTTP_202_ACCEPTED)
+        print(serializer.is_valid())
         if serializer.is_valid():
             data = serializer.validated_data
             logger.info(f"Generating Dataset with data: {data}")
@@ -705,8 +702,12 @@ class DatasetGenerationView(UserIDMixin, APIView):
                 status="STARTING",
                 workflow_id=workflow_id,
             )
-            mine_negatives.apply_async(
-                args=[data, user_id],
-                task_id=str(task.id),
-            )
+            if request.data["task"] == "negative_mining":
+                mine_negatives.apply_async(
+                    args=[data, user_id],
+                    task_id=str(task.id),
+                )
+
             return Response({"taskId": task.id}, status=status.HTTP_202_ACCEPTED)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
