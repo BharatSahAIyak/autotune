@@ -27,6 +27,7 @@ from transformers import AdamW, get_linear_schedule_with_warmup
 from colbert.training.rerank_batcher import RerankBatcher
 from colbert.training.lazy_batcher import LazyBatcher
 from colbert.utils.utils import print_message
+from sklearn.preprocessing import LabelEncoder
 
 
 def get_task_class(task):
@@ -84,8 +85,9 @@ class Tasks(ABC):
 class TextClassification(Tasks):
     def __init__(self, model_name: str, version: str):
         super().__init__("text_classification", model_name, version)
-        self.metrics = evaluate.combine(["accuracy", "f1", "precision", "recall"])
+        self.metrics = evaluate.load("f1")
         self.onnx = ORTModelForSequenceClassification
+        self.le = LabelEncoder()
 
     def load_dataset(self, dataset):
         self.dataset = load_dataset(dataset).shuffle()
@@ -112,10 +114,19 @@ class TextClassification(Tasks):
         self.Trainer = Trainer
         self.TrainingArguments = TrainingArguments
 
+    def __label_encoder(self, examples):
+        return {
+            "text": examples["text"],
+            "label": self.le.fit_transform(examples["label"]),
+        }
+
     def _prepare_dataset(self):
         # assume label column is 'label' and text column is 'text' in the dataset
         self.tokenized_dataset = self.dataset.map(
             self.__preprocess_function, batched=True
+        )
+        self.tokenized_dataset = self.tokenized_dataset.map(
+            self.__label_encoder, batched=True
         )
         self.data_collator = DataCollatorWithPadding(tokenizer=self.tokenizer)
 
@@ -125,7 +136,9 @@ class TextClassification(Tasks):
     def compute_metrics(self, eval_pred):
         predictions, labels = eval_pred
         predictions = np.argmax(predictions, axis=1)
-        return self.metrics.compute(predictions=predictions, references=labels)
+        return self.metrics.compute(
+            predictions=predictions, references=labels, average="macro"
+        )
 
     def push_to_hub(self, trainer, save_path, hf_token=None):
         trainer.model.push_to_hub(
@@ -154,7 +167,7 @@ class TextClassification(Tasks):
 class Colbert(Tasks):
     def __init__(self, model_name: str, version: str):
         super().__init__("embedding", model_name, version)
-        # self.metrics = evaluate.combine(["cosine_similarity"])
+        self.metrics = evaluate.combine(["cosine_similarity"])
         self.model_name = model_name
         self.checkpoint = model_name
         self._load_model_requirements()

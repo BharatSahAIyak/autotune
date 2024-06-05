@@ -86,20 +86,20 @@ def train_model(celery, req_data, task_id):
     task = task_class(req_data["model"], req_data["version"])
     dataset = task.load_dataset(req_data["dataset"])
     training_args = task.get_training_args(req_data, dataset)
-    
+
     trainer = task.Trainer(
         model=task.model, args=training_args, callbacks=[CeleryProgressCallback(celery)]
     )
 
     trainer.train()
 
-    # _, _, metrics = trainer.predict(task.tokenized_dataset["test"])
-    # json_metrics = json.dumps(metrics)
-    # json_bytes = json_metrics.encode("utf-8")
-    # fileObj = io.BytesIO(json_bytes)
+    _, _, metrics = trainer.predict(task.tokenized_dataset["test"])
+    json_metrics = json.dumps(metrics)
+    json_bytes = json_metrics.encode("utf-8")
+    fileObj = io.BytesIO(json_bytes)
 
-    # meta = {"logs": trainer.state.log_history, "metrics": metrics}
-    # celery.update_state(state="PUSHING", meta=meta)
+    meta = {"logs": trainer.state.log_history, "metrics": metrics}
+    celery.update_state(state="PUSHING", meta=meta)
 
     api_key = settings.HUGGING_FACE_TOKEN
     login(token=api_key)
@@ -122,4 +122,4 @@ def train_model(celery, req_data, task_id):
 
     logger.info("Training complete")
 
-    # return meta
+    return meta
