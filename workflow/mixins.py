@@ -118,6 +118,8 @@ class CacheDatasetMixin:
                 dataset = request.POST.get("dataset")
                 task_type = request.POST.get("task_type")
 
+            logger.debug(f"recieved dataset {dataset} and task_type {task_type}")
+
             workflow_id = None
             created = False
 
@@ -127,13 +129,17 @@ class CacheDatasetMixin:
                 raise ValueError("Please give a valid task type.")
 
             for workflow in workflows:
-                test_dataset = Dataset.objects.get(workflow_id=workflow.workflow_id)
+                test_dataset = Dataset.objects.filter(
+                    workflow_id=workflow.workflow_id
+                ).first()
                 if test_dataset.type == task_type:
                     workflow_id = workflow.workflow_id
-                    logger.info("found a valid workflow")
+                    logger.debug(
+                        "found an existing workflow with this task for the given user"
+                    )
+                    break
 
             if workflow_id is None:
-                # handle stupid situation and create a new workflow -_-
                 created_workflow = Workflows.objects.create(
                     user_id=user_id,
                     type="Training",
@@ -141,7 +147,7 @@ class CacheDatasetMixin:
                 )
                 workflow_id = created_workflow.workflow_id
                 created = True
-                logger.info("created a workflow for the task.")
+                logger.debug("created a workflow for the task.")
 
             if dataset:
                 huggingface_id, dataset_name = dataset.split("/")

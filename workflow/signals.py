@@ -25,10 +25,6 @@ def validate_workflow(sender, instance, **kwargs):
             raise ValidationError(
                 "Workflow configuration is required for COMPLETE type workflows."
             )
-        if not instance.latest_prompt:
-            raise ValidationError(
-                "Latest prompt is required for COMPLETE type workflows."
-            )
         if not instance.split:
             raise ValidationError("Split is required for COMPLETE type workflows.")
         if not instance.total_examples:
