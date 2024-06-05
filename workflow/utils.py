@@ -220,14 +220,11 @@ def get_task_config(task=None):
                         "seed",
                         "weather",
                         "price",
-                        "non_agri"
+                        "non_agri",
                     ]
                 },
             },
-            "telemetryDataField": {
-                "input": "query",
-                "output": None
-            }
+            "telemetryDataField": {"input": "query", "output": None},
         },
         "ner": {
             "model": "distilbert-finetuned",
@@ -242,14 +239,11 @@ def get_task_config(task=None):
                         {"name": "email", "value": "email"},
                         {"name": "phone_number", "value": "phone_number"},
                         {"name": "time", "value": "time"},
-                        {"name": "date", "value": "date"}
+                        {"name": "date", "value": "date"},
                     ]
-    },
+                },
             },
-            "telemetryDataField": {
-                "input": "query",
-                "output": "NER"
-            }
+            "telemetryDataField": {"input": "query", "output": "NER"},
         },
         "neural_coreference": {
             "model": "FCoref",
@@ -257,16 +251,13 @@ def get_task_config(task=None):
             "labelStudioElement": {
                 "name": "Translation",
                 "config": {
-                    "leftHeader":"Read the previous conversation",
+                    "leftHeader": "Read the previous conversation",
                     "rightHeader": "Provide coreferenced text",
                     "leftTextAreaName": "Previous conversation",
-                    "rightTextAreaName":"Coreferenced text"
+                    "rightTextAreaName": "Coreferenced text",
                 },
             },
-            "telemetryDataField": {
-                "input": "query",
-                "output": "coreferencedText"
-            }
+            "telemetryDataField": {"input": "query", "output": "coreferencedText"},
         },
     }
 
@@ -285,10 +276,10 @@ def get_task_config(task=None):
 
 
 # to get the mapping between the dataset columns and the input columns
-# task:{input_column: dataset_column,output_column: dataset_column}
+# task:{input_column in db: dataset_column,output_column in db: dataset_column}
 def get_task_mapping(task):
     mapping = {
-        "text_classification": {"input_string": "question", "output_string": "choices"}
+        "text_classification": {"input_string": "text", "output_string": "label"}
     }
     if task in mapping:
         return mapping[task]
