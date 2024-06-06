@@ -217,6 +217,7 @@ CORS_ALLOW_ALL_ORIGINS = True
 CSRF_TRUSTED_ORIGINS = ["http://localhost:8000"]
 
 level_styles = {
+    "debug": {"color": "blue"},
     "info": {"color": "green"},  # Info logs are green
     "warning": {"color": "yellow"},
     "error": {"color": "red"},

@@ -279,7 +279,7 @@ def get_task_config(task=None):
 # task:{input_column in db: dataset_column,output_column in db: dataset_column}
 def get_task_mapping(task):
     mapping = {
-        "text_classification": {"input_string": "text", "output_string": "label"}
+        "text_classification": {"input_string": "text", "output_string": "class"}
     }
     if task in mapping:
         return mapping[task]

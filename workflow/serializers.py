@@ -150,9 +150,9 @@ class ModelDataSerializer(serializers.Serializer):
     )  # for an existing model
     epochs = serializers.FloatField(required=False, default=1)
     save_path = serializers.CharField(max_length=255)
-    task = serializers.ChoiceField(
+    task_type = serializers.ChoiceField(
         choices=["text_classification", "seq2seq", "embedding"]
-    )  # TODO: Create a constant for TASKS
+    )
     version = serializers.CharField(max_length=50, required=False, default="main")
     workflow_id = serializers.UUIDField(required=False, allow_null=True)
     args = serializers.JSONField(required=False, default={}, allow_null=True)

@@ -640,7 +640,7 @@ def add_user(request):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class TrainModelView(UserIDMixin, APIView):
+class TrainModelView(UserIDMixin, CacheDatasetMixin, APIView):
 
     def post(self, request, *args, **kwargs):
         serializer = ModelDataSerializer(data=request.data)
@@ -649,10 +649,9 @@ class TrainModelView(UserIDMixin, APIView):
         if serializer.is_valid():
             data = serializer.validated_data
             logger.info(f"Training model with data: {data}")
-            data["workflow_id"] = str(data["workflow_id"])
-            workflow_id = data["workflow_id"]
+            workflow_id = request.META["workflow_id"]
 
-            training_task = request.data.get("training_task", "text_classification")
+            training_task = request.data.get("task_type")
 
             task = Task.objects.create(
                 name=f"Training Workflow {workflow_id}",
@@ -660,12 +659,17 @@ class TrainModelView(UserIDMixin, APIView):
                 workflow_id=workflow_id,
             )
 
+            cached_dataset_id = request.META.get("cached_dataset_id", None)
+
             train.apply_async(
-                args=[data, user_id, training_task],
+                args=[data, user_id, training_task, cached_dataset_id],
                 task_id=str(task.id),
             )
 
-            return Response({"taskId": task.id}, status=status.HTTP_202_ACCEPTED)
+            return Response(
+                {"workflow_id": request.META["workflow_id"], "task_id": task.id},
+                status=status.HTTP_202_ACCEPTED,
+            )
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
