@@ -1192,6 +1192,24 @@ asgiref = ">=3.6"
 Django = ">=3.2"
 
 [[package]]
+name = "django-pandas"
+version = "0.6.7"
+description = "Tools for working with pydata.pandas in your Django projects"
+optional = false
+python-versions = "*"
+files = [
+    {file = "django-pandas-0.6.7.tar.gz", hash = "sha256:f64fdf4aec1ff36f853a87400482f2f7826c403a2582a7429610a3eae97dca02"},
+    {file = "django_pandas-0.6.7-py3-none-any.whl", hash = "sha256:09db19db618591da76a555b8cf01cef632856261c5d39e47d3ce0a172bac1829"},
+]
+
+[package.dependencies]
+pandas = ">=0.14.1"
+six = ">=1.15.0"
+
+[package.extras]
+test = ["coverage (==5.4)", "pandas (>=0.20.1)", "semver (==2.10.1)"]
+
+[[package]]
 name = "django-redis"
 version = "5.4.0"
 description = "Full featured redis cache backend for Django."
@@ -6017,4 +6035,4 @@ testing = ["coverage (>=5.0.3)", "zope.event", "zope.testing"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.12"
-content-hash = "82ddac79957fc14ad0091c92933f6a7a65719925459e3c41a281ce39d2285219"
+content-hash = "1e2cf805bc67ee0a50b7ab18284d35813664d7c96e9235c2a423c472bc7eb07b"

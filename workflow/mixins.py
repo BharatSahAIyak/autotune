@@ -253,7 +253,7 @@ class CacheDatasetMixin:
             for csv_column in task_mapping.values():
                 if csv_column not in df.columns:
                     raise ValueError(
-                        f"Column '{csv_column}' does not exist in the dataset"
+                        f"Column '{csv_column}' does not exist in the dataset for {csv_file.split('/')[-1]}"
                     )
 
             if "id" in df.columns:
