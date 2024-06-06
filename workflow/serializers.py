@@ -155,6 +155,7 @@ class ModelDataSerializer(serializers.Serializer):
     )  # TODO: Create a constant for TASKS
     version = serializers.CharField(max_length=50, required=False, default="main")
     workflow_id = serializers.UUIDField(required=False, allow_null=True)
+    args = serializers.JSONField(required=False, default={}, allow_null=True)
 
     def validate(self, data):
         # TODO: needs to be a valid dataset on huggingface

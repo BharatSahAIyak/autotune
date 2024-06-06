@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from functools import partial
 from dataclasses import dataclass
-
+import logging
 import evaluate
 import numpy as np
 from datasets import load_dataset
@@ -28,6 +28,8 @@ from colbert.training.rerank_batcher import RerankBatcher
 from colbert.training.lazy_batcher import LazyBatcher
 from colbert.utils.utils import print_message
 from sklearn.preprocessing import LabelEncoder
+
+logger = logging.getLogger(__name__)
 
 
 def get_task_class(task):
@@ -83,11 +85,14 @@ class Tasks(ABC):
 # needs train and validation in the dataset
 # needs 'class'/'label' column in the dataset
 class TextClassification(Tasks):
-    def __init__(self, model_name: str, version: str):
+    def __init__(self, model_name: str, version: str, args):
         super().__init__("text_classification", model_name, version)
         self.metrics = evaluate.load("f1")
         self.onnx = ORTModelForSequenceClassification
         self.le = LabelEncoder()
+        self.label2id = None
+        if "label2id" in args and len(args["label2id"]) != 0:
+            self.label2id = args["label2id"]
 
     def load_dataset(self, dataset):
         self.dataset = load_dataset(dataset).shuffle()
@@ -96,7 +101,7 @@ class TextClassification(Tasks):
         return self.dataset
 
     def _load_model(self):
-        num_labels = len(self.dataset["train"].unique("label"))
+        num_labels = len(self.dataset["train"].unique("class"))
         self.model = AutoModelForSequenceClassification.from_pretrained(
             self.model_name, num_labels=num_labels
         )
@@ -115,19 +120,22 @@ class TextClassification(Tasks):
         self.TrainingArguments = TrainingArguments
 
     def __label_encoder(self, examples):
-        return {
-            "text": examples["text"],
-            "label": self.le.fit_transform(examples["label"]),
-        }
+        if self.label2id is not None:
+            encoded_labels = np.array(
+                [self.label2id[label] for label in examples["class"]]
+            )
+
+        else:
+            encoded_labels = self.le.fit_transform(np.array(examples["class"]))
+        return {"text": examples["text"], "label": encoded_labels}
 
     def _prepare_dataset(self):
-        # assume label column is 'label' and text column is 'text' in the dataset
+        # assume label column is 'class' and text column is 'text' in the dataset
+        self.dataset = self.dataset.map(self.__label_encoder, batched=True)
         self.tokenized_dataset = self.dataset.map(
             self.__preprocess_function, batched=True
         )
-        self.tokenized_dataset = self.tokenized_dataset.map(
-            self.__label_encoder, batched=True
-        )
+
         self.data_collator = DataCollatorWithPadding(tokenizer=self.tokenizer)
 
     def __preprocess_function(self, examples):
@@ -165,7 +173,7 @@ class TextClassification(Tasks):
 
 
 class Colbert(Tasks):
-    def __init__(self, model_name: str, version: str):
+    def __init__(self, model_name: str, version: str, kwargs):
         super().__init__("embedding", model_name, version)
         self.metrics = evaluate.combine(["cosine_similarity"])
         self.model_name = model_name
