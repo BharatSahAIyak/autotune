@@ -426,8 +426,13 @@ class TaskView(APIView):
 
     def get(self, request, task_id):
         task = get_object_or_404(Task, pk=task_id)
-        percentage = task.generated_samples / task.total_samples
-        return Response({"status": task.status, "percentage": percentage})
+        response_data = {"status": task.status}
+
+        if not task.name.strip().startswith("Training Workflow"):
+            percentage = task.generated_samples / task.total_samples
+            response_data["percentage"] = percentage
+
+        return Response(response_data)
 
 
 @method_decorator(csrf_exempt, name="dispatch")
