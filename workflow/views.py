@@ -46,6 +46,7 @@ from .serializers import (
     WorkflowConfigSerializer,
     WorkflowDetailSerializer,
     WorkflowSerializer,
+    AudioDatasetSerializer
 )
 from .utils import (
     create_pydantic_model,
@@ -56,6 +57,7 @@ from .utils import (
     paginate_queryset,
     validate_and_save_examples,
 )
+from .align_tasks import align_task
 
 logger = logging.getLogger(__name__)
 
@@ -841,3 +843,40 @@ class ConfigView(APIView):
                 return Response(
                     {"error": "Task not found"}, status=status.HTTP_404_NOT_FOUND
                 )
+
+class ForceAlignmentView(APIView,CacheDatasetMixin,UserIDMixin):
+    
+    def post(self, request, *args, **kwargs):
+        
+        serializer = AudioDatasetSerializer(data=request.data)
+
+        if serializer.is_valid():
+            data = serializer.validated_data
+            logger.info(f"Force-Aligning with data: {data}")
+            workflow_id = request.data["workflow_id"]
+
+            task = Task.objects.create(
+                name=f"Force Alignment Workflow {workflow_id}",
+                status="STARTING",
+                workflow_id=workflow_id,
+            )
+            if data["transcript_available"]:
+                align_task.apply_async(
+                    args=[data],
+                    task_id=str(task.id),
+                )
+            else:
+                #TODO: provide data to asr pipeline 
+                pass
+
+            return Response(
+                {"workflow_id": request.data["workflow_id"],"task_id":task.id},
+                status=status.HTTP_202_ACCEPTED,
+            )
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        
+        
+        
+        
