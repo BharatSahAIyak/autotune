@@ -5,20 +5,24 @@ import shutil
 
 from celery import shared_task
 from celery.utils.log import get_task_logger
-from datasets import load_dataset
 from django.conf import settings
 from django.utils import timezone
-from huggingface_hub import HfApi, login
+from django_pandas.io import read_frame
+from huggingface_hub import CommitOperationAdd, HfApi, login
 from transformers import TrainerCallback
 
-from .models import MLModel, Task, TrainingMetadata, User
+from workflow.models import Dataset, DatasetData, MLModel, Task, TrainingMetadata, User
+from workflow.utils import get_task_mapping
+
 from .tasks import get_task_class
 
 logger = get_task_logger(__name__)
 
 
 @shared_task(bind=True, max_retries=settings.CELERY_MAX_RETRIES, retry_backoff=True)
-def train(self, req_data, user_id, training_task):
+def train(self, req_data, user_id, training_task, cached_dataset_id):
+    upload_cache(cached_dataset_id, training_task, req_data["dataset"])
+
     task_id = self.request.id
     task = Task.objects.get(id=task_id)
     task.status = "TRAINING"
@@ -82,23 +86,23 @@ def train_model(celery, req_data, task_id):
     req_data["task_id"] = task_id
     task_class = get_task_class(req_data["task"])
     # TODO: differentiate between workflow dataset and request dataset
-    task = task_class(req_data["model"], req_data["version"])
+    task = task_class(req_data["model"], req_data["version"], args=req_data["args"])
     dataset = task.load_dataset(req_data["dataset"])
     training_args = task.get_training_args(req_data, dataset)
-    
+
     trainer = task.Trainer(
         model=task.model, args=training_args, callbacks=[CeleryProgressCallback(celery)]
     )
 
     trainer.train()
 
-    # _, _, metrics = trainer.predict(task.tokenized_dataset["test"])
-    # json_metrics = json.dumps(metrics)
-    # json_bytes = json_metrics.encode("utf-8")
-    # fileObj = io.BytesIO(json_bytes)
+    _, _, metrics = trainer.predict(task.tokenized_dataset["test"])
+    json_metrics = json.dumps(metrics)
+    json_bytes = json_metrics.encode("utf-8")
+    fileObj = io.BytesIO(json_bytes)
 
-    # meta = {"logs": trainer.state.log_history, "metrics": metrics}
-    # celery.update_state(state="PUSHING", meta=meta)
+    meta = {"logs": trainer.state.log_history, "metrics": metrics}
+    celery.update_state(state="PUSHING", meta=meta)
 
     api_key = settings.HUGGING_FACE_TOKEN
     login(token=api_key)
@@ -121,4 +125,48 @@ def train_model(celery, req_data, task_id):
 
     logger.info("Training complete")
 
-    # return meta
+    return meta
+
+
+def upload_cache(cached_dataset_id, training_task, dataset):
+    # upload the cached dataset to HF
+    hf_api = HfApi(token=settings.HUGGING_FACE_TOKEN)
+
+    cached_dataset = Dataset.objects.get(id=cached_dataset_id)
+    cachedDataEntries = DatasetData.objects.filter(dataset=cached_dataset)
+
+    task_mapping = get_task_mapping(training_task)
+    additional_fields = list(task_mapping.keys())
+    fieldNames = ["id", "file"]
+    fieldNames.extend(additional_fields)
+    df = read_frame(cachedDataEntries, fieldnames=fieldNames)
+
+    grouped = df.groupby("file")
+
+    # Upload each group as a CSV to Hugging Face
+    for file_name, group in grouped:
+        # drop the file column
+        group.drop(columns=["file"], inplace=True)
+
+        # rename the columns for the dataset column names
+        for field in additional_fields:
+            group.rename(columns={field: task_mapping[field]}, inplace=True)
+
+        csv_data = group.to_csv(index=False)
+        file_data = csv_data.encode("utf-8")
+
+        operation = CommitOperationAdd(file_name, file_data)
+        commit_info = hf_api.create_commit(
+            repo_id=dataset,
+            operations=[operation],
+            commit_message=f"Updating {file_name} file",
+            repo_type="dataset",
+        )
+        logger.info(f"pushed {file_name} file: {commit_info}")
+
+    logger.info("Uploaded cached dataset to HF")
+
+    # delete the cached dataset
+    cached_dataset.delete()
+    logger.info("Deleted cached dataset")
+    return
