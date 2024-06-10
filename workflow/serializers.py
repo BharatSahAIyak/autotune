@@ -212,3 +212,37 @@ class DatasetDataSerializer(serializers.ModelSerializer):
         return {
             key: value for key, value in representation.items() if value is not None
         }
+
+class AudioDatasetSerializer(serializers.Serializer):
+    dataset = serializers.CharField(max_length=255,required=False, allow_blank=True)
+    workflow_id = serializers.UUIDField(required=False, allow_null=True)
+    save_path = serializers.CharField(max_length=255)
+    transcript_available=serializers.CharField(max_length=255,required=False,allow_blank=True)
+    time_duration=serializers.FloatField(required=False, default=None)
+
+
+    def validate(self, data):
+        dataset_url = data.get("dataset")
+        workflow_id = data.get("workflow_id")
+        save_path=data.get("save_path")
+
+        if not dataset_url and not workflow_id:
+
+            raise serializers.ValidationError(
+                "Either dataset_url or workflow_id must be provided"
+            )
+        
+        if not dataset_url and worflow_id:
+            worflow_dataset=Dataset.objects.filter(workflow_id=workflow_id).first()
+
+            if not workflow_dataset:
+                raise serializers.ValidationError(
+                    "No dataset associated with the provided workflow_id."
+                )
+                data["dataset"] = workflow_dataset.urlpatterns
+        if not save_path:
+            raise serializers.ValidationError(
+                "save_path must be provided"
+            )
+        
+        return data 
