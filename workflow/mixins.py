@@ -1,4 +1,5 @@
 import logging
+import traceback
 import uuid
 
 import pandas as pd
@@ -118,6 +119,8 @@ class CacheDatasetMixin:
                 dataset = request.POST.get("dataset")
                 task_type = request.POST.get("task_type")
 
+            logger.info(f"recieved dataset {dataset} and task_type {task_type}")
+
             workflow_id = None
             created = False
 
@@ -127,13 +130,22 @@ class CacheDatasetMixin:
                 raise ValueError("Please give a valid task type.")
 
             for workflow in workflows:
-                test_dataset = Dataset.objects.get(workflow_id=workflow.workflow_id)
-                if test_dataset.type == task_type:
+                print("in the for loop")
+                print(workflow)
+                test_dataset = Dataset.objects.filter(
+                    workflow_id=workflow.workflow_id
+                ).first()
+                if test_dataset and test_dataset.type == task_type:
                     workflow_id = workflow.workflow_id
-                    logger.info("found a valid workflow")
+                    logger.info(
+                        "found an existing workflow with this task for the given user"
+                    )
+                    break
 
+            print(workflow_id)
+
+            # Create workflow for a user for given task if no workflow w a dataset of given task exists
             if workflow_id is None:
-                # handle stupid situation and create a new workflow -_-
                 created_workflow = Workflows.objects.create(
                     user_id=user_id,
                     type="Training",
@@ -141,23 +153,33 @@ class CacheDatasetMixin:
                 )
                 workflow_id = created_workflow.workflow_id
                 created = True
-                logger.info("created a workflow for the task.")
+                logger.info(
+                    f"created a workflow for the task with workflow_id {workflow_id}"
+                )
 
+            # When user gives a HF dataset to use for caching the data
             if dataset:
                 huggingface_id, dataset_name = dataset.split("/")
-                dataset_object, _ = Dataset.objects.get_or_create(
-                    huggingface_id=huggingface_id,
-                    name=dataset_name,
+                dataset_object = Dataset.objects.filter(
                     type=task_type,
-                    defaults={
-                        "workflow_id": workflow_id,
-                    },
-                )
+                    workflow_id=workflow_id,
+                ).first()
+
+                # No existing dataset objectwith the given task
+                if not dataset_object:
+                    dataset_object = Dataset.objects.create(
+                        huggingface_id=huggingface_id,
+                        name=dataset_name,
+                        type=task_type,
+                        workflow_id=workflow_id,
+                        is_locally_cached=False,
+                    )
 
                 # data not in cache
                 if not dataset_object.is_locally_cached:
                     self.cache_dataset(dataset_object, task_mapping, dataset)
 
+            # Dataset generated at autotune and user wants to use that.
             elif not created:
                 dataset_object = Dataset.objects.filter(workflow_id=workflow_id).first()
                 if not dataset_object:
@@ -183,10 +205,13 @@ class CacheDatasetMixin:
             return response
 
         except ValueError as ve:
+            logger.error(f"\n{traceback.format_exc()}")
             response = Response({"error": str(ve)}, status=status.HTTP_400_BAD_REQUEST)
         except FileNotFoundError as fnfe:
+            logger.error(f"\n{traceback.format_exc()}")
             response = Response({"error": str(fnfe)}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
+            logger.error(f"\n{traceback.format_exc()}")
             response = Response(
                 {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
@@ -228,7 +253,7 @@ class CacheDatasetMixin:
             for csv_column in task_mapping.values():
                 if csv_column not in df.columns:
                     raise ValueError(
-                        f"Column '{csv_column}' does not exist in the dataset"
+                        f"Column '{csv_column}' does not exist in the dataset for {csv_file.split('/')[-1]}"
                     )
 
             if "id" in df.columns:

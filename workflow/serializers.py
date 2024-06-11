@@ -150,11 +150,12 @@ class ModelDataSerializer(serializers.Serializer):
     )  # for an existing model
     epochs = serializers.FloatField(required=False, default=1)
     save_path = serializers.CharField(max_length=255)
-    task = serializers.ChoiceField(
+    task_type = serializers.ChoiceField(
         choices=["text_classification", "seq2seq", "embedding"]
-    )  # TODO: Create a constant for TASKS
+    )
     version = serializers.CharField(max_length=50, required=False, default="main")
     workflow_id = serializers.UUIDField(required=False, allow_null=True)
+    args = serializers.JSONField(required=False, default={}, allow_null=True)
 
     def validate(self, data):
         # TODO: needs to be a valid dataset on huggingface
@@ -211,3 +212,37 @@ class DatasetDataSerializer(serializers.ModelSerializer):
         return {
             key: value for key, value in representation.items() if value is not None
         }
+
+class AudioDatasetSerializer(serializers.Serializer):
+    dataset = serializers.CharField(max_length=255,required=False, allow_blank=True)
+    workflow_id = serializers.UUIDField(required=False, allow_null=True)
+    save_path = serializers.CharField(max_length=255)
+    transcript_available=serializers.CharField(max_length=255,required=False,allow_blank=True)
+    time_duration=serializers.FloatField(required=False, default=None)
+
+
+    def validate(self, data):
+        dataset_url = data.get("dataset")
+        workflow_id = data.get("workflow_id")
+        save_path=data.get("save_path")
+
+        if not dataset_url and not workflow_id:
+
+            raise serializers.ValidationError(
+                "Either dataset_url or workflow_id must be provided"
+            )
+        
+        if not dataset_url and worflow_id:
+            worflow_dataset=Dataset.objects.filter(workflow_id=workflow_id).first()
+
+            if not workflow_dataset:
+                raise serializers.ValidationError(
+                    "No dataset associated with the provided workflow_id."
+                )
+                data["dataset"] = workflow_dataset.urlpatterns
+        if not save_path:
+            raise serializers.ValidationError(
+                "save_path must be provided"
+            )
+        
+        return data 

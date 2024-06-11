@@ -46,6 +46,7 @@ from .serializers import (
     WorkflowConfigSerializer,
     WorkflowDetailSerializer,
     WorkflowSerializer,
+    AudioDatasetSerializer
 )
 from .utils import (
     create_pydantic_model,
@@ -56,6 +57,7 @@ from .utils import (
     paginate_queryset,
     validate_and_save_examples,
 )
+from .align_tasks import align_task
 
 logger = logging.getLogger(__name__)
 
@@ -426,8 +428,13 @@ class TaskView(APIView):
 
     def get(self, request, task_id):
         task = get_object_or_404(Task, pk=task_id)
-        percentage = task.generated_samples / task.total_samples
-        return Response({"status": task.status, "percentage": percentage})
+        response_data = {"status": task.status}
+
+        if not task.name.strip().startswith("Training Workflow"):
+            percentage = task.generated_samples / task.total_samples
+            response_data["percentage"] = percentage
+
+        return Response(response_data)
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -640,7 +647,7 @@ def add_user(request):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class TrainModelView(UserIDMixin, APIView):
+class TrainModelView(UserIDMixin, CacheDatasetMixin, APIView):
 
     def post(self, request, *args, **kwargs):
         serializer = ModelDataSerializer(data=request.data)
@@ -649,10 +656,9 @@ class TrainModelView(UserIDMixin, APIView):
         if serializer.is_valid():
             data = serializer.validated_data
             logger.info(f"Training model with data: {data}")
-            data["workflow_id"] = str(data["workflow_id"])
-            workflow_id = data["workflow_id"]
+            workflow_id = request.META["workflow_id"]
 
-            training_task = request.data.get("training_task", "text_classification")
+            training_task = request.data.get("task_type")
 
             task = Task.objects.create(
                 name=f"Training Workflow {workflow_id}",
@@ -660,12 +666,17 @@ class TrainModelView(UserIDMixin, APIView):
                 workflow_id=workflow_id,
             )
 
+            cached_dataset_id = request.META.get("cached_dataset_id", None)
+
             train.apply_async(
-                args=[data, user_id, training_task],
+                args=[data, user_id, training_task, cached_dataset_id],
                 task_id=str(task.id),
             )
 
-            return Response({"taskId": task.id}, status=status.HTTP_202_ACCEPTED)
+            return Response(
+                {"workflow_id": request.META["workflow_id"], "task_id": task.id},
+                status=status.HTTP_202_ACCEPTED,
+            )
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -837,3 +848,40 @@ class ConfigView(APIView):
                 return Response(
                     {"error": "Task not found"}, status=status.HTTP_404_NOT_FOUND
                 )
+
+class ForceAlignmentView(APIView,CacheDatasetMixin,UserIDMixin):
+    
+    def post(self, request, *args, **kwargs):
+        
+        serializer = AudioDatasetSerializer(data=request.data)
+
+        if serializer.is_valid():
+            data = serializer.validated_data
+            logger.info(f"Force-Aligning with data: {data}")
+            workflow_id = request.data["workflow_id"]
+
+            task = Task.objects.create(
+                name=f"Force Alignment Workflow {workflow_id}",
+                status="STARTING",
+                workflow_id=workflow_id,
+            )
+            if data["transcript_available"]:
+                align_task.apply_async(
+                    args=[data],
+                    task_id=str(task.id),
+                )
+            else:
+                #TODO: provide data to asr pipeline 
+                pass
+
+            return Response(
+                {"workflow_id": request.data["workflow_id"],"task_id":task.id},
+                status=status.HTTP_202_ACCEPTED,
+            )
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        
+        
+        
+        
