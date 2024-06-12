@@ -103,7 +103,10 @@ class TextClassification(Tasks):
     def _load_model(self):
         num_labels = len(self.dataset["train"].unique("class"))
         self.model = AutoModelForSequenceClassification.from_pretrained(
-            self.model_name, num_labels=num_labels
+            self.model_name,
+            num_labels=num_labels,
+            id2label=self.id2label,
+            label2id=self.label2id,
         )
         self.Trainer = partial(
             self.Trainer,
@@ -114,6 +117,7 @@ class TextClassification(Tasks):
             data_collator=self.data_collator,
             compute_metrics=self.compute_metrics,
         )
+        # self.model.label2id = self.model.id2label
 
     def _load_model_requirements(self):
         self.Trainer = Trainer
@@ -137,6 +141,11 @@ class TextClassification(Tasks):
         )
 
         self.data_collator = DataCollatorWithPadding(tokenizer=self.tokenizer)
+        if self.label2id is None:
+            self.label2id = dict(
+                zip(self.le.classes_, map(str, self.le.transform(self.le.classes_)))
+            )
+        self.id2label = {v: k for k, v in self.label2id.items()}
 
     def __preprocess_function(self, examples):
         return self.tokenizer(examples["text"], truncation=True, padding=True)
@@ -149,13 +158,12 @@ class TextClassification(Tasks):
         )
 
     def push_to_hub(self, trainer, save_path, hf_token=None):
-        trainer.model.push_to_hub(
-            save_path, commit_message="pytorch_model.bin upload/update"
-        )
+        logger.info(self.label2id)
+        logger.info(self.id2label)
+        trainer.model.push_to_hub(save_path, commit_message="Updated Model")
         trainer.tokenizer.push_to_hub(save_path)
 
     def get_training_args(self, req_data, dataset):
-
         return TrainingArguments(
             output_dir=f"./results_{req_data['task_id']}",
             num_train_epochs=req_data["epochs"],
@@ -208,7 +216,6 @@ class Colbert(Tasks):
         pass
 
     def get_training_args(self, request, dataset):
-
         return ColBERTTrainingArgument(
             request["model"],
             triples=os.path.join(dataset, "triples.train.colbert.jsonl"),
@@ -283,7 +290,6 @@ class ColBERTTrainingArgument:
 
 
 class ColBERTTrainer:
-
     def __init__(self, model, args, callbacks=None) -> None:
         self.args = args
         self.model = model
