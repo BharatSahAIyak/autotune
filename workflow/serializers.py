@@ -212,3 +212,13 @@ class DatasetDataSerializer(serializers.ModelSerializer):
         return {
             key: value for key, value in representation.items() if value is not None
         }
+
+
+class ModelDeploySerializer(serializers.Serializer):
+    service_names = serializers.CharField(max_length=255, required=True)
+    finetuned_model = serializers.CharField(max_length=255, required=True)
+    deployment_model = serializers.CharField(max_length=255, required=True)
+    gh_workflow = serializers.CharField(max_length=255, required=True)
+
+    def validate(self, data):
+        return data

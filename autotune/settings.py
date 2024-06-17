@@ -71,6 +71,11 @@ MINIO_SECURE_CONN = os.getenv("MINIO_SECURE_CONN") == "True"
 
 MINIO_BUCKET_NAME = os.getenv("MINIO_BUCKET")
 
+GITHUB_PAT = os.getenv("GITHUB_PAT")
+
+AI_TOOLS_REPO = "BharatSahAIyak/ai-tools"
+AI_TOOLS_REPO_BRANCH = "dev"
+
 # Application definition
 
 INSTALLED_APPS = [

@@ -22,6 +22,7 @@ from rest_framework.views import APIView
 
 from workflow.generator.dataFetcher import DataFetcher
 from workflow.generator.generate import process_task
+from workflow.training.deploy import deploy_model
 from workflow.training.train import train
 
 from .mixins import CacheDatasetMixin, UserIDMixin
@@ -41,6 +42,7 @@ from .serializers import (
     ExampleSerializer,
     MLModelSerializer,
     ModelDataSerializer,
+    ModelDeploySerializer,
     PromptSerializer,
     UserSerializer,
     WorkflowConfigSerializer,
@@ -841,3 +843,24 @@ class ConfigView(APIView):
                 return Response(
                     {"error": "Task not found"}, status=status.HTTP_404_NOT_FOUND
                 )
+
+
+class ModelDeployView(UserIDMixin, APIView):
+    def post(self, request):
+        serializer = ModelDeploySerializer(data=request.data)
+
+        if serializer.is_valid():
+            data = serializer.data
+
+            logger.info(f"data: {serializer.data}")
+            logger.info(f"Deploying model with data: {data['finetuned_model']}")
+
+            deploy_model.apply_async(
+                args=[data],
+            )
+
+            return Response(
+                status=status.HTTP_202_ACCEPTED,
+            )
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
