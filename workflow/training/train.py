@@ -12,9 +12,8 @@ from huggingface_hub import CommitOperationAdd, HfApi, login
 from transformers import TrainerCallback
 
 from workflow.models import Dataset, DatasetData, MLModel, Task, TrainingMetadata, User
-from workflow.utils import get_task_mapping
+from .utils import get_task_class
 
-from .tasks import get_task_class
 
 logger = get_task_logger(__name__)
 
@@ -102,6 +101,7 @@ def train_model(celery, req_data, task_id):
     fileObj = io.BytesIO(json_bytes)
 
     meta = {"logs": trainer.state.log_history, "metrics": metrics}
+    logger.info(metrics)
     celery.update_state(state="PUSHING", meta=meta)
 
     api_key = settings.HUGGING_FACE_TOKEN
