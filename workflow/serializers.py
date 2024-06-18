@@ -2,8 +2,16 @@ from jsonschema import Validator
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
-from .models import (Dataset, DatasetData, Examples, MLModel, Prompt, User,
-                     WorkflowConfig, Workflows)
+from .models import (
+    Dataset,
+    DatasetData,
+    Examples,
+    MLModel,
+    Prompt,
+    User,
+    WorkflowConfig,
+    Workflows,
+)
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -55,7 +63,7 @@ class PromptSerializer(serializers.ModelSerializer):
             },
             "source": {"help_text": "The source from which the prompt was derived."},
             "workflow": {
-                "read_only": True,
+                "read_only": False,
                 "help_text": "The ID of the workflow to which the prompt is associated.",
             },
         }
