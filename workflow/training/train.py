@@ -84,7 +84,7 @@ class CeleryProgressCallback(TrainerCallback):
 
 def train_model(celery, req_data, task_id):
     req_data["task_id"] = task_id
-    task_class = get_task_class(req_data["task"])
+    task_class = get_task_class(req_data["task_type"])
     # TODO: differentiate between workflow dataset and request dataset
     task = task_class(req_data["model"], req_data["version"], args=req_data["args"])
     dataset = task.load_dataset(req_data["dataset"])
