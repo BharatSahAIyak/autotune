@@ -2,16 +2,8 @@ from jsonschema import Validator
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
-from .models import (
-    Dataset,
-    DatasetData,
-    Examples,
-    MLModel,
-    Prompt,
-    User,
-    WorkflowConfig,
-    Workflows,
-)
+from .models import (Dataset, DatasetData, Examples, MLModel, Prompt, User,
+                     WorkflowConfig, Workflows)
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -389,8 +381,8 @@ class AudioDatasetSerializer(serializers.Serializer):
                 "Either dataset_url or workflow_id must be provided"
             )
 
-        if not dataset_url and worflow_id:
-            worflow_dataset = Dataset.objects.filter(workflow_id=workflow_id).first()
+        if not dataset_url and workflow_id:
+            workflow_dataset = Dataset.objects.filter(workflow_id=workflow_id).first()
 
             if not workflow_dataset:
                 raise serializers.ValidationError(
