@@ -4,7 +4,6 @@ on: [push, pull_request]
 
 jobs:
   test:
-
     runs-on: ubuntu-latest
 
     strategy:
@@ -12,48 +11,67 @@ jobs:
         python-version: ['3.10']
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Install poetry
-      run: pip install poetry
-    
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ matrix.python-version }}
-        cache: 'poetry'
-    
-    - run: poetry install
-    - run: poetry show --latest
-    - run: poetry run pytest --cov --cov-report xml
-    
-    - name: Coveralls
-      uses: coverallsapp/github-action@v2
-      with:
-        github-token: ${{ secrets.COVERALLS_REPO_TOKEN }}
-        file: coverage.xml
-        flag-name: python-${{ matrix.python-version }}
-  
-  test-mac:
-    
-    runs-on: macos-latest
-    strategy:
-      matrix:
-        python-version: ['3.10']
+      - name: Install poetry
+        run: pip install poetry
 
-    steps:
-    - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'poetry'
 
-    - name: Install poetry
-      run: pip install poetry
-    
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ matrix.python-version }}
-        cache: 'poetry'
-    
-    - run: poetry install
-    - run: poetry show --latest
-    - run: poetry run pytest --cov 
+      - run: poetry install
+      - run: poetry show --latest
+      - run: poetry run pytest --cov --cov-report xml
 
+      - name: Coveralls
+        uses: coverallsapp/github-action@v2
+        with:
+          github-token: ${{ secrets.COVERALLS_REPO_TOKEN }}
+          file: coverage.xml
+          flag-name: python-${{ matrix.python-version }}
+
+  # test-mac:
+  #   runs-on: macos-latest
+  #   strategy:
+  #     matrix:
+  #       python-version: ['3.10']
+
+  #   steps:
+  #     - uses: actions/checkout@v4
+
+  #     - name: Install Poetry
+  #       run: |
+  #         curl -sSL https://install.python-poetry.org | python -
+  #         echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+  #     - name: Set up Python ${{ matrix.python-version }}
+  #       uses: actions/setup-python@v4
+  #       with:
+  #         python-version: ${{ matrix.python-version }}
+  #         cache: 'poetry'
+
+  #     - name: Install Faiss
+  #       run: |
+  #         brew install cmake libomp openblas
+  #         git clone https://github.com/facebookresearch/faiss.git
+  #         cd faiss
+  #         cmake -B build -DFAISS_ENABLE_GPU=ON -DFAISS_ENABLE_PYTHON=ON -DCMAKE_BUILD_TYPE=Release
+  #         make -C build -j
+  #         cd build/faiss/python
+  #         python setup.py install
+  #       shell: bash
+
+  #     - name: Install Poetry
+  #       run: pip install poetry
+
+  #     - name: Install Project Dependencies
+  #       run: poetry install
+
+  #     - name: Show Latest Poetry Packages
+  #       run: poetry show --latest
+
+  #     - name: Run Tests
+  #       run: poetry run pytest --cov
