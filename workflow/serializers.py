@@ -1,6 +1,5 @@
 from jsonschema import Validator
 from rest_framework import serializers
-from rest_framework.exceptions import ValidationError
 
 from .models import (
     Dataset,
