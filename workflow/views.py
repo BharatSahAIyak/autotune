@@ -2,10 +2,8 @@ import ast
 import io
 import logging
 from decimal import Decimal, getcontext
-from typing import List
 
 import pandas as pd
-from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
@@ -14,16 +12,15 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
-from huggingface_hub import HfApi
 from rest_framework import status
 from rest_framework.decorators import api_view
-from rest_framework.exceptions import NotFound
 from rest_framework.generics import ListAPIView, UpdateAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from workflow.generator.dataFetcher import DataFetcher
 from workflow.generator.generate import process_task
+from workflow.health import HealthCheck
 from workflow.training.train import train
 
 from .align_tasks import align_task
@@ -1046,3 +1043,34 @@ class ForceAlignmentView(APIView, CacheDatasetMixin, UserIDMixin):
             )
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class HealthCheckView(APIView):
+
+    def get(self, request):
+
+        health_checker = HealthCheck()
+
+        services = [
+            health_checker.openai(),
+            health_checker.redis(),
+            health_checker.celery_workers(),
+            health_checker.postgres(),
+            health_checker.huggingface(),
+            health_checker.minio(),
+        ]
+
+        all_services_healthy = all(
+            service["status"]["isAvailable"] for service in services
+        )
+        response = {
+            "health": "healthy" if all_services_healthy else "unhealthy",
+            "upstreamServices": services,
+        }
+        return Response(response)
+
+
+class PingCheckView(APIView):
+    def get(self, request):
+        resp = {"status": "ok", "details": {"autotune": {"status": "up"}}}
+        return Response(resp, status=status.HTTP_200_OK)

@@ -195,13 +195,14 @@ class DataFetcher:
 
         system_prompt += f"\n{config.model_string}\n"
 
-        # logger.info(f"system_prompt: {system_prompt}")
+        logger.info(f"system_prompt: {system_prompt}")
         logger.info(f"user_prompt: {user_prompt}")
         if (
             llm_model == "gpt-4-turbo-preview"
             or llm_model == "gpt-4-turbo"
             or llm_model == "gpt-3.5-turbo-0125"
             or llm_model == "gpt-3.5-turbo"
+            or llm_model == "gpt-4o"
         ):
             chat_completion = client.chat.completions.create(
                 model=llm_model,
