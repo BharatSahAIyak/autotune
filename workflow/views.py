@@ -1064,7 +1064,7 @@ class HealthCheckView(APIView):
             service["status"]["isAvailable"] for service in services
         )
         response = {
-            "health": "healthy" if all_services_healthy else "unhealthy",
+            "status": "ok" if all_services_healthy else "unhealthy",
             "upstreamServices": services,
         }
         return Response(response)
