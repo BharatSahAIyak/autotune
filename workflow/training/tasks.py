@@ -20,7 +20,7 @@ class Tasks(ABC):
         self.TrainingArguments = None
         self.metrics = None
         self.tokenized_dataset = None
-        self._load_model_requirements()
+        # self._load_model_requirements()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         # self.Trainer = partial(
         #     self.Trainer,

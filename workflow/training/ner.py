@@ -11,13 +11,20 @@ import ast
 
 class NamedEntityRecognition(Tasks):
 
-    def __init__(self, task: str, model_name: str, version: str):
-        super().__init__(task, model_name, version)
+    def __init__(self, model_name: str, version: str, args):
+        super().__init__("ner", model_name, version)
         self.metrics = {
             "precision": evaluate.load("precision"),
             "recall": evaluate.load("recall"),
             "f1": evaluate.load("f1"),
         }
+        if "entity_labels" in args:
+            self.entity_labels = args["entity_labels"]  # List of entity labels/Tags
+        else:
+            self.entity_labels = None
+
+        self.labels = None  # List of labels for training - After adding "B-" and "I-" to entity labels
+        self.tokenized_dataset = {"train": None, "test": None}
 
     def _load_model_requirements(self):
         self.model = DistilBertForTokenClassification.from_pretrained(
@@ -33,39 +40,24 @@ class NamedEntityRecognition(Tasks):
             train_dataset=self.train_dataset,
             eval_dataset=self.eval_dataset,
             tokenizer=self.tokenizer,
-            compute_metrics=self._get_compute_metrics,
+            compute_metrics=self._get_compute_metrics(),
         )
 
     def load_dataset(self, dataset, **kwargs):
-        df = self._get_dataframe(dataset)
-        if "entity_labels" in kwargs:
-            self.entity_labels = kwargs["entity_labels"]
-        else:
-            self.entity_labels = self._extract_entity_labels(df)
-        extract_val = self._make_extraction(self.entity_labels)
+        train_df, test_df = self._prepare_dataset(dataset)
+        if self.entity_labels is None:
+            self.entity_labels = list(self._extract_entity_labels(train_df))
+        extract_values = self._make_extraction(self.entity_labels)
         self.labels = self._get_labels()
+        train_df[(self.entity_labels)] = train_df["Output"].apply(
+            lambda x: pd.Series(extract_values(x))
+        )
+        test_df[self.entity_labels] = test_df["Output"].apply(
+            lambda x: pd.Series(extract_values(x))
+        )
 
-        sentences = df["sentences"].apply(lambda x: [x.lower()]).to_list()
-        encodings = self._prepare_encodings()
-
-        train_inputs, val_inputs, train_labels, val_labels, train_masks, val_masks = (
-            train_test_split(
-                encodings["input_ids"],
-                encodings["labels"],
-                encodings["attention_mask"],
-                test_size=0.15,
-            )
-        )  # # Convert splitted data into Dataset objects
-        train_encodings = {
-            "input_ids": train_inputs,
-            "attention_mask": train_masks,
-            "labels": train_labels,
-        }
-        val_encodings = {
-            "input_ids": val_inputs,
-            "attention_mask": val_masks,
-            "labels": val_labels,
-        }
+        train_encodings = self._prepare_encodings(train_df)
+        val_encodings = self._prepare_encodings(test_df)
 
         self.train_dataset = NERDataset(
             train_encodings, self.device, self.default_label_id
@@ -73,6 +65,9 @@ class NamedEntityRecognition(Tasks):
         self.eval_dataset = NERDataset(
             val_encodings, self.device, self.default_label_id
         )
+
+        self.tokenized_dataset["train"] = self.train_dataset
+        self.tokenized_dataset["test"] = self.train_dataset
 
     def _extract_entity_labels(self, df):
         entity_labels = set()
@@ -91,7 +86,8 @@ class NamedEntityRecognition(Tasks):
             warmup_steps=500,
             weight_decay=0.01,
             logging_dir=f"./logs/NER_{req_data['task_id']}",
-            evaluation_strategy="epoch",  # Evaluate at the end of each epoch
+            eval_strategy="epoch",  # Evaluate at the end of each epoch
+            save_strategy="epoch",  # Save at the end of each epoch
             save_total_limit=2,
             dataloader_pin_memory=False,
             load_best_model_at_end=True,
@@ -99,11 +95,24 @@ class NamedEntityRecognition(Tasks):
         )
         return training_args
 
+    def compute_metrics(self, eval_pred):
+        predictions, labels = eval_pred
+        predictions = torch.argmax(predictions, axis=2)
+
+        return {
+            k: metric.compute(
+                predictions=predictions.ravel(),
+                references=labels.ravel(),
+                average="weighted",
+            )
+            for k, metric in self.metrics.items()
+        }
+
     def _get_compute_metrics(self):
 
         def compute_metrics(p):
             predictions, labels = p
-            predictions = torch.argmax(predictions, axis=2)
+            predictions = torch.argmax(torch.tensor(predictions), axis=2)
 
             return {
                 k: metric.compute(
@@ -116,15 +125,17 @@ class NamedEntityRecognition(Tasks):
 
         return compute_metrics
 
-    def _get_dataframe(dataset_name):
-        data_files = {"train": "train.csv"}
+    def _prepare_dataset(self, dataset_name):
+        data_files = {"train": "train.csv", "test": "test.csv"}
         columns = ["Input", "Output"]
         df = load_dataset(dataset_name, data_files=data_files)
-        df = pd.DataFrame(df["train"])[columns]
-        df = df.rename(columns={"Input": "sentences"})
-        return df
+        train_df = pd.DataFrame(df["train"])[columns]
+        test_df = pd.DataFrame(df["train"])[columns]
+        train_df = train_df.rename(columns={"Input": "sentences"})
+        test_df = test_df.rename(columns={"Input": "sentences"})
+        return train_df, test_df
 
-    def _make_extraction(entity_labels):
+    def _make_extraction(self, entity_labels):
 
         def extract_values(output_str):
             output_dict = ast.literal_eval(output_str)
@@ -138,8 +149,8 @@ class NamedEntityRecognition(Tasks):
 
     def _get_labels(self):
         labels = ["O"]
-        for l in self.entity_labels:
-            l = l.split("_")[0].upper()
+        entity_labels = set(self.entity_labels)
+        for l in entity_labels:
             labels.append("B-" + l)
             labels.append("I-" + l)
 
@@ -148,7 +159,9 @@ class NamedEntityRecognition(Tasks):
         self.default_label_id = self.label2id["O"]
         return labels
 
-    def _create_tags(word_token_mapping, phrase, type_agri_term="PEST", tags=None):
+    def _create_tags(
+        self, word_token_mapping, phrase, type_agri_term="PEST", tags=None
+    ):
         if pd.isnull(phrase):
             return tags
         elif phrase == "":
@@ -180,7 +193,7 @@ class NamedEntityRecognition(Tasks):
 
         return tags
 
-    def _create_word_token_mapping(sentence, tokenized_list):
+    def _create_word_token_mapping(self, sentence, tokenized_list):
         # Create a copy of the tokenized_list removing [CLS], [SEP], and [PAD], but remember their original indices
         filtered_tokens_with_indices = [
             (token, idx)
@@ -211,8 +224,9 @@ class NamedEntityRecognition(Tasks):
         return word_token_mapping
 
     def _prepare_encodings(self, df):
+        sentences = df["sentences"].apply(lambda x: [x.lower()]).to_list()
         encodings = self.tokenizer(
-            df["sentences"],
+            sentences,
             is_split_into_words=True,
             padding=True,
             truncation=True,
@@ -235,7 +249,7 @@ class NamedEntityRecognition(Tasks):
                 tags = self._create_tags(
                     word_token_mapping,
                     row[entity],
-                    type_agri_term=entity.split("_")[0].upper(),
+                    type_agri_term=entity,
                     tags=tags,
                 )
 
@@ -245,6 +259,12 @@ class NamedEntityRecognition(Tasks):
             encodings["labels"][i] = torch.tensor(current_labels)
 
         return encodings
+
+    def push_to_hub(self, trainer: Trainer, save_path, hf_token):
+        trainer.model.push_to_hub(
+            save_path, commit_message="pytorch_model.bin upload/update"
+        )
+        trainer.tokenizer.push_to_hub(save_path)
 
 
 class NERDataset(torch.utils.data.Dataset):
