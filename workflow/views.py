@@ -841,7 +841,7 @@ class ConfigView(APIView):
                 return Response({"data": task_mapping}, status=status.HTTP_200_OK)
             else:
                 return Response(
-                    {"error": "Task not found"}, status=status.HTTP_404_NOT_FOUND
+                    {"error": "Task not found"}, status=status.HTTP_400_BAD_REQUEST
                 )
 
 
