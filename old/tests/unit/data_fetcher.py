@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from models import GenerationAndCommitRequest
-from tasks.data_fetcher import DataFetcher
+from old.models import GenerationAndCommitRequest
+from old.tasks.data_fetcher import DataFetcher
 
 from .fixtures import REDIS_DATA
 
@@ -78,7 +78,7 @@ async def test_initialization_from_redis():
 
     # We only care about the data key here
     mock_redis.hgetall = AsyncMock(return_value={"data": "[]"})
-    with patch("utils.get_data", mock_get_data):
+    with patch("old.utils.get_data", mock_get_data):
         fetcher = DataFetcher(
             GENERATION_AND_COMMIT_REQUEST, "openai_key", mock_redis, "task_id"
         )
@@ -103,7 +103,7 @@ async def test_fetch_and_update():
     mock_redis.hset = AsyncMock()
     mock_redis.hgetall = AsyncMock(return_value={})
 
-    with patch("utils.get_data", mock_get_data):
+    with patch("old.utils.get_data", mock_get_data):
         fetcher = DataFetcher(
             GENERATION_AND_COMMIT_REQUEST, "openai_key", mock_redis, "task_id"
         )

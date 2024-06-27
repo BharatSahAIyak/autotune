@@ -75,6 +75,8 @@ celery -A autotune worker --loglevel=info -P gevent
 celery -A autotune worker --loglevel=info  --pool=solo
 ```
 
+For the API specification, refer to the [API SPECIFICATION](docs/AUTOTUNE.md#api-specifications)
+
 ## Contributing
 
 Interested in contributing to AutoTune? We'd love your help! Check out our [issues section](https://github.com/BharatSahAIyak/autotune/issues) for areas where you can contribute. Please see our [contribution guide](CONTRIBUTION.md) for more details on how to get involved.

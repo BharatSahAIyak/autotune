@@ -39,10 +39,11 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             # minimal
-            type=pep440,pattern={{version}},value=${{ github.ref_name }},enable=${{ github.event_name == 'release' }}
+            type=match,pattern=v(.*),group=1,value=${{ github.ref_name }},enable=${{ github.event_name == 'release' }}
             # branch event
             type=ref,event=branch
-            type=raw,value=latest,enable=${{ github.event_name == 'release' }}
+          flavor: |
+            latest=false
 
       - name: Build and Push Docker image
         uses: docker/build-push-action@v4

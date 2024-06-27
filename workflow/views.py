@@ -2,29 +2,29 @@ import ast
 import io
 import logging
 from decimal import Decimal, getcontext
-from typing import List
 
 import pandas as pd
-from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
-from huggingface_hub import HfApi
+from drf_yasg import openapi
+from drf_yasg.utils import swagger_auto_schema
 from rest_framework import status
 from rest_framework.decorators import api_view
-from rest_framework.exceptions import NotFound
 from rest_framework.generics import ListAPIView, UpdateAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from workflow.generator.dataFetcher import DataFetcher
 from workflow.generator.generate import process_task
+from workflow.health import HealthCheck
 from workflow.training.deploy import deploy_model
 from workflow.training.train import train
 
+from .align_tasks import align_task
 from .mixins import CacheDatasetMixin, UserIDMixin
 from .models import (
     Dataset,
@@ -38,6 +38,7 @@ from .models import (
     Workflows,
 )
 from .serializers import (
+    AudioDatasetSerializer,
     DatasetDataSerializer,
     ExampleSerializer,
     MLModelSerializer,
@@ -68,6 +69,17 @@ def index():
 
 class CreateWorkflowView(UserIDMixin, APIView):
 
+    @swagger_auto_schema(
+        operation_description="Create a new workflow and associated prompt",
+        request_body=WorkflowSerializer,
+        responses={
+            201: openapi.Response(
+                description="Workflow and prompt created successfully",
+                schema=WorkflowSerializer,
+            ),
+            400: openapi.Response(description="Invalid data for workflow or prompt"),
+        },
+    )
     def post(self, request):
         with transaction.atomic():
             user: User = request.META["user"]
@@ -107,33 +119,6 @@ class CreateWorkflowView(UserIDMixin, APIView):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class IterateWorkflowView(UserIDMixin, APIView):
-    """
-    Iterates over a workflow by either adding new examples or refining existing ones based on the provided data.
-    This operation can generate or refine questions and answers based on the examples associated with the workflow.
-
-    Args:
-        request (HttpRequest): The request object containing 'examples' data.
-        workflow_id (int): The ID of the workflow to be iterated on.
-
-    Sample Request Payload:
-        {
-            "examples": [
-                {
-                    "text": "What is AI?",
-                    "label": "positive",
-                    "reason": "Relevant to the field of study"
-                },
-                {
-                    "text": "What is 2 + 2?",
-                    "label": "negative",
-                    "reason": "Irrelevant question"
-                }
-            ]
-        }
-    Returns:
-    - A response object with the outcome of the iteration process. The response structure and data depend on the json schema defined in the configfunction.
-    """
-
     def post(self, request, workflow_id, *args, **kwargs):
         user_id = request.META["user"].user_id
 
@@ -223,11 +208,21 @@ class IterateWorkflowView(UserIDMixin, APIView):
 
 
 class WorkflowListView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Retrieve a list of workflows",
+        responses={200: WorkflowDetailSerializer(many=True)},
+    )
     def get(self, request, *args, **kwargs):
         workflows = Workflows.objects.all()
         serializer = WorkflowDetailSerializer(workflows, many=True)
         return Response(serializer.data)
 
+    @swagger_auto_schema(
+        operation_description="Create a new workflow",
+        request_body=WorkflowSerializer,
+        responses={201: WorkflowSerializer(), 400: "Invalid data"},
+    )
     def post(self, request, *args, **kwargs):
         serializer = WorkflowSerializer(data=request.data)
         if serializer.is_valid():
@@ -237,11 +232,21 @@ class WorkflowListView(APIView):
 
 
 class SingleWorkflowView(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Retrieve a specific workflow by ID",
+        responses={200: WorkflowDetailSerializer()},
+    )
     def get(self, request, workflow_id, *args, **kwargs):
         workflow = get_object_or_404(Workflows, workflow_id=workflow_id)
         serializer = WorkflowDetailSerializer(workflow)
         return Response(serializer.data)
 
+    @swagger_auto_schema(
+        operation_description="Update a specific workflow by ID",
+        request_body=WorkflowSerializer,
+        responses={200: WorkflowSerializer(), 400: "Invalid data"},
+    )
     def put(self, request, workflow_id, *args, **kwargs):
         workflow = get_object_or_404(Workflows, workflow_id=workflow_id)
         serializer = WorkflowSerializer(workflow, data=request.data, partial=True)
@@ -250,6 +255,9 @@ class SingleWorkflowView(APIView):
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    @swagger_auto_schema(
+        operation_description="Delete a specific workflow by ID", responses={204: None}
+    )
     def delete(self, request, workflow_id, *args, **kwargs):
         workflow = get_object_or_404(Workflows, workflow_id=workflow_id)
         workflow.delete()
@@ -257,6 +265,11 @@ class SingleWorkflowView(APIView):
 
 
 class PromptViewSet(APIView):
+
+    @swagger_auto_schema(
+        operation_description="Retrieve all prompts associated with a specific workflow",
+        responses={200: PromptSerializer(many=True)},
+    )
     def get(self, request, workflow_id):
         workflow = get_object_or_404(Workflows, pk=workflow_id)
         prompts = (
@@ -264,6 +277,11 @@ class PromptViewSet(APIView):
         )  # Get all prompts associated with this workflow
         return Response(PromptSerializer(prompts, many=True).data)
 
+    @swagger_auto_schema(
+        operation_description="Create a new prompt in a specific workflow",
+        request_body=PromptSerializer,
+        responses={201: PromptSerializer(), 400: "Invalid data"},
+    )
     def post(self, request, workflow_id):
         workflow = get_object_or_404(Workflows, pk=workflow_id)
         if not request.data.get("user_prompt"):
@@ -283,12 +301,16 @@ class PromptViewSet(APIView):
             workflow.latest_prompt = prompt
             workflow.save()
 
-            return Response(serializer.data, status=201)
-        return Response(serializer.errors, status=400)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class ExamplesView(APIView):
 
+    @swagger_auto_schema(
+        operation_description="Retrieve examples; filter by workflow if ID is provided.",
+        responses={200: ExampleSerializer(many=True)},
+    )
     def get(self, request, workflow_id=None):
         if workflow_id:
             examples = Examples.objects.filter(
@@ -300,6 +322,11 @@ class ExamplesView(APIView):
         serialized_examples = ExampleSerializer(examples, many=True)
         return Response(serialized_examples.data, status=status.HTTP_200_OK)
 
+    @swagger_auto_schema(
+        operation_description="Post examples for a specific workflow.",
+        request_body=ExampleSerializer(many=True),
+        responses={201: "Examples updated successfully", 400: "Invalid data"},
+    )
     def post(self, request, workflow_id):
         workflow = get_object_or_404(Workflows, pk=workflow_id)
         examples_data = request.data.get("examples", [])
@@ -315,54 +342,25 @@ class ExamplesView(APIView):
 
 
 class WorkflowUpdateView(UpdateAPIView):
-    """
-    Update an existing workflow.
-
-    PUT /workflow/{workflow_id}/update/
-
-    Parameters:
-    - workflow_id (URL Path): ID of the workflow to be updated.
-
-    Request Body (application/json):
-    {
-        "workflow_name": "New Workflow Name",
-        "total_examples": 1200,
-        ...
-    }
-
-    Responses:
-    - 200 OK: Workflow successfully updated.
-      {
-          "workflow_name": "New Workflow Name",
-          "total_examples": 1200,
-          ...
-      }
-    - 404 Not Found: If no workflow with the given ID exists.
-    """
-
     queryset = Workflows.objects.all()
     serializer_class = WorkflowSerializer
     lookup_field = "workflow_id"
 
+    @swagger_auto_schema(
+        operation_description="Update a specific workflow by ID",
+        request_body=WorkflowSerializer,
+        responses={200: WorkflowSerializer(), 400: "Invalid data"},
+    )
+    def put(self, request, *args, **kwargs):
+        return super().put(request, *args, **kwargs)
+
 
 class WorkflowDuplicateView(APIView):
-    """
-    Duplicate an existing workflow, creating a new instance with a new ID.
 
-    PUT /workflow/{workflow_id}/duplicate/
-
-    Parameters:
-    - workflow_id (URL Path): ID of the workflow to be duplicated.
-
-    Responses:
-    - 201 Created: Workflow successfully duplicated.
-      {
-          "workflow_id": "new-workflow-id",
-          ...
-      }
-    - 404 Not Found: If no workflow with the given ID exists.
-    """
-
+    @swagger_auto_schema(
+        operation_description="Duplicate a workflow by ID",
+        responses={201: WorkflowSerializer(), 404: "Not Found"},
+    )
     def put(self, request, workflow_id):
         workflow = get_object_or_404(Workflows, workflow_id=workflow_id)
         workflow.pk = None
@@ -372,51 +370,31 @@ class WorkflowDuplicateView(APIView):
 
 
 class WorkflowStatusView(APIView):
-    """
-    Retrieve the status of a specific workflow.
 
-    GET /workflow/status/{workflow_id}/
-
-    Parameters:
-    - workflow_id (URL Path): ID of the workflow whose status is to be retrieved.
-
-    Responses:
-    - 200 OK: Successfully retrieved the status of the workflow.
-      {
-          "workflow_id": "workflow-id",
-          "status": "Workflow Status"
-      }
-    - 404 Not Found: If no workflow with the given ID exists.
-    """
-
+    @swagger_auto_schema(
+        operation_description="Retrieve the status of a workflow by ID",
+        responses={200: "Status of the workflow", 404: "Not Found"},
+    )
     def get(self, request, workflow_id):
         workflow = get_object_or_404(Workflows, workflow_id=workflow_id)
         return Response({"status": workflow.status})
 
 
 class WorkflowSearchView(ListAPIView):
-    """
-    Search for workflows by tag or name.
-
-    GET /workflow/q/?tags=tag1,tag2
-
-    Query Parameters:
-    - tags (string): Comma-separated list of tags to filter workflows by.
-
-    Responses:
-    - 200 OK: Returns a list of workflows that match the search criteria.
-      [
-          {
-              "workflow_id": "some-workflow-id",
-              "workflow_name": "Some Workflow Name",
-              ...
-          },
-          ...
-      ]
-    """
-
     serializer_class = WorkflowSerializer
 
+    @swagger_auto_schema(
+        operation_description="Search for workflows by tags",
+        manual_parameters=[
+            openapi.Parameter(
+                "tags",
+                openapi.IN_QUERY,
+                description="Comma-separated list of tags to filter workflows",
+                type=openapi.TYPE_STRING,
+            )
+        ],
+        responses={200: WorkflowSerializer(many=True)},
+    )
     def get_queryset(self):
         tags_param = self.request.query_params.get("tags", "")
         tags_query = tags_param.split(",") if tags_param else []
@@ -426,14 +404,70 @@ class WorkflowSearchView(ListAPIView):
 
 class TaskView(APIView):
 
+    @swagger_auto_schema(
+        operation_description="Retrieve the status and progress of a task by ID",
+        responses={
+            200: "A JSON object with the task status and optional progress percentage",
+            404: "Not Found",
+        },
+    )
     def get(self, request, task_id):
         task = get_object_or_404(Task, pk=task_id)
-        percentage = task.generated_samples / task.total_samples
-        return Response({"status": task.status, "percentage": percentage})
+        response_data = {"status": task.status}
+
+        if not task.name.strip().startswith("Training Workflow"):
+            percentage = task.generated_samples / task.total_samples
+            response_data["percentage"] = percentage
+
+        return Response(response_data)
 
 
 @method_decorator(csrf_exempt, name="dispatch")
 class GenerateTaskView(UserIDMixin, APIView):
+
+    @swagger_auto_schema(
+        operation_description="Create a new task for the specified workflow.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                "prompts": openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description="A list of prompts as a string representation of a list (JSON format).",
+                ),
+                "file": openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    items=openapi.Items(type=openapi.TYPE_STRING, format="binary"),
+                    description="List of CSV files containing prompts. Picks the prompts column from the CSV file.",
+                ),
+                "total_examples": openapi.Schema(
+                    type=openapi.TYPE_INTEGER,
+                    description="The total number of examples to generate.",
+                ),
+                "batch_size": openapi.Schema(
+                    type=openapi.TYPE_INTEGER,
+                    description="The batch size for processing.",
+                ),
+                "example_per_prompt": openapi.Schema(
+                    type=openapi.TYPE_INTEGER,
+                    description="Number of examples per prompt. REQUIRED when files are uploaded or prompts are provided.",
+                ),
+                "max_iterations": openapi.Schema(
+                    type=openapi.TYPE_INTEGER,
+                    description="Maximum number of iterations for the task.",
+                    default=100,
+                ),
+                "max_concurrent_fetches": openapi.Schema(
+                    type=openapi.TYPE_INTEGER,
+                    description="Maximum number of concurrent fetches.",
+                    default=100,
+                ),
+            },
+        ),
+        responses={
+            202: openapi.Response(description="Task creation initiated"),
+            400: openapi.Response(description="Invalid data"),
+        },
+    )
     def post(self, request, workflow_id, *args, **kwargs):
         user_id = request.META["user"].user_id
 
@@ -562,6 +596,10 @@ class WorkflowConfigView(APIView):
     Class-based view for managing WorkflowConfig.
     """
 
+    @swagger_auto_schema(
+        operation_description="Retrieve all WorkflowConfig objects",
+        responses={200: WorkflowConfigSerializer(many=True)},
+    )
     def get(self, request):
         """
         Retrieve all WorkflowConfig objects.
@@ -570,6 +608,26 @@ class WorkflowConfigView(APIView):
         serializer = WorkflowConfigSerializer(configs, many=True)
         return Response(serializer.data)
 
+    @swagger_auto_schema(
+        operation_description="Create a new WorkflowConfig",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=["schema_example"],
+            properties={
+                "schema_example": openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description="The example schema for the workflow configuration",
+                )
+            },
+        ),
+        responses={
+            201: openapi.Response(
+                description="Workflow config created successfully",
+                schema=WorkflowConfigSerializer,
+            ),
+            400: "Invalid data",
+        },
+    )
     def post(self, request):
         """
         Create a new WorkflowConfig.
@@ -605,6 +663,15 @@ class WorkflowConfigView(APIView):
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    @swagger_auto_schema(
+        operation_description="Update an existing WorkflowConfig based on its ID",
+        request_body=WorkflowConfigSerializer,
+        responses={
+            200: WorkflowConfigSerializer,
+            400: "Invalid data",
+            404: "Not found",
+        },
+    )
     def patch(self, request, config_id):
         """
         Update an existing WorkflowConfig based on its ID.
@@ -616,6 +683,10 @@ class WorkflowConfigView(APIView):
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    @swagger_auto_schema(
+        operation_description="Delete a WorkflowConfig based on its ID",
+        responses={204: "Workflow config deleted successfully", 404: "Not found"},
+    )
     def delete(self, request, config_id):
         """
         Delete a WorkflowConfig based on its ID.
@@ -644,6 +715,14 @@ def add_user(request):
 
 class TrainModelView(UserIDMixin, CacheDatasetMixin, APIView):
 
+    @swagger_auto_schema(
+        operation_description="Start training a model with the provided data.",
+        request_body=ModelDataSerializer,
+        responses={
+            202: openapi.Response(description="Training task initiated successfully."),
+            400: openapi.Response(description="Invalid data"),
+        },
+    )
     def post(self, request, *args, **kwargs):
         serializer = ModelDataSerializer(data=request.data)
         user_id = request.META["user"].user_id
@@ -685,7 +764,10 @@ class MLModelListView(APIView):
 
 
 class MLModelDetailView(APIView):
-
+    @swagger_auto_schema(
+        operation_description="Retrieve a list of all ML models.",
+        responses={200: MLModelSerializer(many=True)},
+    )
     def get(self, request, model_id, format=None):
         try:
             model = MLModel.objects.get(id=model_id)
@@ -697,6 +779,40 @@ class MLModelDetailView(APIView):
 
 class DatasetView(UserIDMixin, CacheDatasetMixin, APIView):
 
+    @swagger_auto_schema(
+        operation_description="Fetches CSV files from a Hugging Face dataset repository, with pagination and optional file-specific fetching.",
+        manual_parameters=[
+            openapi.Parameter(
+                "page",
+                openapi.IN_QUERY,
+                description="The page number for the dataset.",
+                type=openapi.TYPE_INTEGER,
+                default=1,
+            ),
+            openapi.Parameter(
+                "perPage",
+                openapi.IN_QUERY,
+                description="The number of records per page.",
+                type=openapi.TYPE_INTEGER,
+                default=10,
+            ),
+            openapi.Parameter(
+                "file",
+                openapi.IN_QUERY,
+                description="Specific file name to fetch from the dataset.",
+                type=openapi.TYPE_STRING,
+                required=False,
+            ),
+        ],
+        responses={
+            200: openapi.Response(
+                description="Data retrieved successfully.",
+                schema=DatasetDataSerializer(many=True),
+            ),
+            204: openapi.Response(description="No content."),
+            400: openapi.Response(description="Invalid data."),
+        },
+    )
     def get(self, request):
         """
         Fetches CSV files from a Hugging Face dataset repository, with pagination and optional file-specific fetching.
@@ -770,6 +886,40 @@ class DatasetView(UserIDMixin, CacheDatasetMixin, APIView):
             status=status.HTTP_200_OK,
         )
 
+    @swagger_auto_schema(
+        operation_description="Fetches CSV files from a Hugging Face dataset repository, with pagination and optional file-specific fetching.",
+        manual_parameters=[
+            openapi.Parameter(
+                "page",
+                openapi.IN_QUERY,
+                description="The page number for the dataset.",
+                type=openapi.TYPE_INTEGER,
+                default=1,
+            ),
+            openapi.Parameter(
+                "perPage",
+                openapi.IN_QUERY,
+                description="The number of records per page.",
+                type=openapi.TYPE_INTEGER,
+                default=10,
+            ),
+            openapi.Parameter(
+                "file",
+                openapi.IN_QUERY,
+                description="Specific file name to fetch from the dataset.",
+                type=openapi.TYPE_STRING,
+                required=False,
+            ),
+        ],
+        responses={
+            200: openapi.Response(
+                description="Data retrieved successfully.",
+                schema=DatasetDataSerializer(many=True),
+            ),
+            204: openapi.Response(description="No content."),
+            400: openapi.Response(description="Invalid data."),
+        },
+    )
     def post(self, request):
         """
         Gets a dataset from huggingface, and stores it in the local cache if not already not locally cached, and stores any changes in the dataset till it is committed
@@ -822,6 +972,25 @@ class DatasetView(UserIDMixin, CacheDatasetMixin, APIView):
 
 
 class ConfigView(APIView):
+    @swagger_auto_schema(
+        operation_description="Returns the config of all the tasks or a specific task if provided.",
+        manual_parameters=[
+            openapi.Parameter(
+                "task",
+                openapi.IN_QUERY,
+                description="Task to get the config for",
+                type=openapi.TYPE_STRING,
+                required=False,
+            )
+        ],
+        responses={
+            200: openapi.Response(
+                description="Configuration data retrieved successfully."
+            ),
+            404: openapi.Response(description="Task not found."),
+            400: openapi.Response(description="Invalid request."),
+        },
+    )
     def get(self, request):
         """
         Returns the config of all the tasks or a specific task if provided.
@@ -864,3 +1033,67 @@ class ModelDeployView(UserIDMixin, APIView):
             )
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ForceAlignmentView(APIView, CacheDatasetMixin, UserIDMixin):
+
+    def post(self, request, *args, **kwargs):
+
+        serializer = AudioDatasetSerializer(data=request.data)
+
+        if serializer.is_valid():
+            data = serializer.validated_data
+            logger.info(f"Force-Aligning with data: {data}")
+            workflow_id = request.data["workflow_id"]
+
+            task = Task.objects.create(
+                name=f"Force Alignment Workflow {workflow_id}",
+                status="STARTING",
+                workflow_id=workflow_id,
+            )
+            if data["transcript_available"]:
+                align_task.apply_async(
+                    args=[data],
+                    task_id=str(task.id),
+                )
+            else:
+                # TODO: provide data to asr pipeline
+                pass
+
+            return Response(
+                {"workflow_id": request.data["workflow_id"], "task_id": task.id},
+                status=status.HTTP_202_ACCEPTED,
+            )
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class HealthCheckView(APIView):
+
+    def get(self, request):
+
+        health_checker = HealthCheck()
+
+        services = [
+            health_checker.openai(),
+            health_checker.redis(),
+            health_checker.celery_workers(),
+            health_checker.postgres(),
+            health_checker.huggingface(),
+            health_checker.minio(),
+        ]
+
+        all_services_healthy = all(
+            service["status"]["isAvailable"] for service in services
+        )
+        response = {
+            "status": "ok" if all_services_healthy else "unhealthy",
+            "upstreamServices": services,
+        }
+        return Response(response)
+
+
+class PingCheckView(APIView):
+    def get(self, request):
+        resp = {"status": "ok", "details": {"autotune": {"status": "up"}}}
+        return Response(resp, status=status.HTTP_200_OK)
