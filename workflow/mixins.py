@@ -133,9 +133,22 @@ class CreateMLBaseMixin:
             )
 
             if created:
-                print(f"Created new MLModel for user {user_id}with ID {ml_model.id}")
+                self.create_workflow(ml_model, task_config)
 
         return super().dispatch(request, *args, **kwargs)
+
+    def create_workflow(self, ml_model: MLModel, task_config):
+        workflow_config = None
+        workflow_name = f"{ml_model.name} Workflow"
+        Workflows.objects.create(
+            workflow_name=workflow_name,
+            workflow_config=workflow_config,
+            user=ml_model.user,
+            model=ml_model,
+            status=Workflows.WorkflowStatus.SETUP,
+            type=Workflows.WorkflowType.TRAINING,
+        )
+        print(f"Created new workflow '{workflow_name}' for model ID {ml_model.id}")
 
 
 class CacheDatasetMixin:
@@ -144,14 +157,12 @@ class CacheDatasetMixin:
         """
         Mixin for all endpoints which deal with a dataset. it has to be preceded by a datasetId in the request endpoint.
         This mixin will check if the dataset is already in the cache, if not it will download the dataset from huggingface and cache it.
-        Needs to either have a dataset associated with the workflow_id in autotune or provide a dataset and type in the request.
         """
 
         try:
-            user_id = request.META["user"].user_id
+            user: User = request.META["user"]
+            user_id = user.user_id
             dataset = None
-
-            workflows = Workflows.objects.filter(user_id=user_id)
 
             if request.method == "GET":
                 dataset = request.GET.get("dataset")
@@ -162,7 +173,6 @@ class CacheDatasetMixin:
 
             logger.info(f"recieved dataset {dataset} and task_type {task_type}")
 
-            workflow_id = None
             created = False
 
             task_mapping = get_task_mapping(task_type)
@@ -170,36 +180,15 @@ class CacheDatasetMixin:
             if not task_mapping:
                 raise ValueError("Please give a valid task type.")
 
-            for workflow in workflows:
-                print("in the for loop")
-                print(workflow)
-                test_dataset = Dataset.objects.filter(
-                    workflow_id=workflow.workflow_id
-                ).first()
-                if test_dataset and test_dataset.type == task_type:
-                    workflow_id = workflow.workflow_id
-                    logger.info(
-                        "found an existing workflow with this task for the given user"
-                    )
-                    break
-
-            print(workflow_id)
-
-            # Create workflow for a user for given task if no workflow w a dataset of given task exists
-            if workflow_id is None:
-                created_workflow = Workflows.objects.create(
-                    user_id=user_id,
-                    type="Training",
-                    workflow_name=f"training_{task_type}",
-                )
-                workflow_id = created_workflow.workflow_id
-                created = True
-                logger.info(
-                    f"created a workflow for the task with workflow_id {workflow_id}"
-                )
-
             # When user gives a HF dataset to use for caching the data
             if dataset:
+                workflow = Workflows.objects.filter(
+                    user__user_id=user_id,
+                    model__task=task_type,
+                    model__config__dataset_path=dataset,
+                ).first()
+                workflow_id = workflow.workflow_id
+
                 huggingface_id, dataset_name = dataset.split("/")
                 dataset_object = Dataset.objects.filter(
                     type=task_type,
@@ -218,10 +207,15 @@ class CacheDatasetMixin:
 
                 # data not in cache
                 if not dataset_object.is_locally_cached:
-                    self.cache_dataset(dataset_object, task_mapping, dataset)
+                    self.cache_dataset(dataset_object, task_mapping, dataset, user)
 
             # Dataset generated at autotune and user wants to use that.
             elif not created:
+                workflow = Workflows.objects.filter(
+                    user__user_id=user_id,
+                    model__task=task_type,
+                ).first()
+                workflow_id = workflow.workflow_id
                 dataset_object = Dataset.objects.filter(workflow_id=workflow_id).first()
                 if not dataset_object:
                     raise ValueError("No dataset associated with the workflow.")
@@ -231,6 +225,7 @@ class CacheDatasetMixin:
                         dataset_object,
                         task_mapping,
                         f"{dataset_object.huggingface_id}/{dataset_object.name}",
+                        user,
                     )
 
             else:
@@ -262,7 +257,7 @@ class CacheDatasetMixin:
         response.renderer_context = {}
         return response
 
-    def cache_dataset(self, dataset_object, task_mapping, dataset):
+    def cache_dataset(self, dataset_object, task_mapping, dataset, user):
         logger.info("didnt find the dataset in the cache, creating a new cache")
         hf_api = HfApi(token=settings.HUGGING_FACE_TOKEN)
 
@@ -297,21 +292,22 @@ class CacheDatasetMixin:
                         f"Column '{csv_column}' does not exist in the dataset for {csv_file.split('/')[-1]}"
                     )
 
-            if "id" in df.columns:
+            if "record_id" in df.columns:
                 # Check and replace non-UUID values with UUIDs
-                df["id"] = df["id"].apply(
+                df["record_id"] = df["record_id"].apply(
                     lambda x: (str(uuid.uuid4()) if not is_valid_uuid(x) else x)
                 )
             else:
-                # Add an 'id' column with new UUIDs
-                df["id"] = [str(uuid.uuid4()) for _ in range(len(df))]
+                # Add an 'record_id' column with new UUIDs
+                df["record_id"] = [str(uuid.uuid4()) for _ in range(len(df))]
 
             filename = csv_file.split("/")[-1]
             for _, row in df.iterrows():
                 row_data = DatasetData(
-                    id=uuid.UUID(row["id"]),
+                    record_id=uuid.UUID(row["record_id"]),
                     dataset=dataset_object,
                     file=filename,
+                    user=user,
                 )
 
                 # get the appropriate columns and their mapping.

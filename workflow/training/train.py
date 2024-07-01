@@ -137,7 +137,7 @@ def upload_cache(cached_dataset_id, training_task, dataset):
 
     task_mapping = get_task_mapping(training_task)
     additional_fields = list(task_mapping.keys())
-    fieldNames = ["id", "file"]
+    fieldNames = ["record_id", "file"]
     fieldNames.extend(additional_fields)
     df = read_frame(cachedDataEntries, fieldnames=fieldNames)
 

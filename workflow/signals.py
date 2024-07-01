@@ -33,11 +33,3 @@ def validate_workflow(sender, instance, **kwargs):
             )
         if not instance.tags:
             raise ValidationError("Tags are required for COMPLETE type workflows.")
-
-
-@receiver(pre_save, sender=DatasetData)
-def validate_dataset_fields(sender, instance, **kwargs):
-    """
-    validates the required fields for different dataset types.
-    """
-    # TODO: implement this logic when more clarity on the field types needed for each dataset type

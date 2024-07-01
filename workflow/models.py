@@ -5,6 +5,7 @@ from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+from django.db.models import UniqueConstraint
 from django.utils.translation import gettext_lazy as _
 
 
@@ -66,9 +67,7 @@ class Dataset(models.Model):
     huggingface_id = models.CharField(null=True, blank=True)
     uploaded_at = models.DateTimeField(null=True, blank=True)
     is_generated_at_autotune = models.BooleanField(default=False)
-    latest_commit_hash = models.CharField(
-        null=True, blank=True
-    )  # not a uuid on huggingface
+    latest_commit_hash = models.CharField(null=True, blank=True)  # not a uuid on HF
     name = models.CharField(max_length=255)
     is_locally_cached = models.BooleanField(default=False)
     workflow = models.ForeignKey(
@@ -222,18 +221,17 @@ class DatasetData(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    record_id = models.UUIDField(default=uuid.uuid4, editable=False)
     file = models.CharField(max_length=255, null=True, blank=True)
     input_string = models.TextField(blank=True, null=True)
     output_string = models.TextField(blank=True, null=True)
     input_json = models.JSONField(blank=True, null=True)
     output_json = models.JSONField(blank=True, null=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="user")
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE, related_name="data")
 
-    def save(self, *args, **kwargs):
-        # if self.dataset.type == Dataset.DatasetType.ASR:
-        # We can define the fields needed for different dataset types here
-
-        super().save(*args, **kwargs)
+    class Meta:
+        UniqueConstraint(fields=["room", "date"], name="unique_booking")
 
 
 class Prompt(models.Model):

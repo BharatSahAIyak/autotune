@@ -776,7 +776,7 @@ class MLModelDetailView(APIView):
             return Response(status=status.HTTP_404_NOT_FOUND)
 
 
-class DatasetView(UserIDMixin, CacheDatasetMixin, APIView):
+class DatasetView(UserIDMixin, CreateMLBaseMixin, CacheDatasetMixin, APIView):
 
     @swagger_auto_schema(
         operation_description="Fetches CSV files from a Hugging Face dataset repository, with pagination and optional file-specific fetching.",
@@ -845,7 +845,7 @@ class DatasetView(UserIDMixin, CacheDatasetMixin, APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        cached_dataset_id = request.META.get("cached_dataset_id", None)
+        cached_dataset_id = request.META.get("cached_dataset_id")
         data = DatasetData.objects.filter(dataset_id=cached_dataset_id)
 
         if file:
@@ -931,6 +931,7 @@ class DatasetView(UserIDMixin, CacheDatasetMixin, APIView):
         """
         input = request.data.get("input", None)
         output = request.data.get("output", None)
+        user = request.META["user"]
 
         if not input:
             return Response(
@@ -948,13 +949,13 @@ class DatasetView(UserIDMixin, CacheDatasetMixin, APIView):
             )
 
         # will be a valid dataset id, handled in the mixin
-        cached_dataset_id = request.META.get("cached_dataset_id", None)
+        cached_dataset_id = request.META.get("cached_dataset_id")
         dataset_object = Dataset.objects.get(id=cached_dataset_id)
         task = dataset_object.type
         task_mapping = get_task_mapping(task)
         keys = list(task_mapping.keys())
 
-        record_data = DatasetData(dataset=dataset_object, file="train.csv")
+        record_data = DatasetData(dataset=dataset_object, file="train.csv", user=user)
 
         setattr(record_data, keys[0], input)
         setattr(record_data, keys[1], output)
@@ -965,6 +966,7 @@ class DatasetView(UserIDMixin, CacheDatasetMixin, APIView):
             {
                 "message": "Dataset data saved successfully.",
                 "workflow_id": request.META.get("workflow_id"),
+                "dataset_id": cached_dataset_id,
             },
             status=status.HTTP_201_CREATED,
         )

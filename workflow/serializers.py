@@ -336,7 +336,7 @@ class DatasetDataSerializer(serializers.ModelSerializer):
         fields = [
             "created_at",
             "updated_at",
-            "id",
+            "record_id",
             "file",
             "input_string",
             "output_string",
@@ -349,7 +349,7 @@ class DatasetDataSerializer(serializers.ModelSerializer):
             "updated_at": {
                 "help_text": "The date and time when the data was last updated."
             },
-            "id": {"help_text": "The unique identifier of the data entry."},
+            "record_id": {"help_text": "The unique identifier of the data entry."},
             "file": {
                 "help_text": "The name of the file from which the data was fetched."
             },
