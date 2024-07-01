@@ -15,8 +15,8 @@ from rest_framework.response import Response
 
 from workflow.models import User
 
-from .models import Dataset, DatasetData, Workflows
-from .utils import get_task_mapping
+from .models import Dataset, DatasetData, MLModel, MLModelConfig, Workflows
+from .utils import create_pydantic_model, get_task_config, get_task_mapping
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +95,47 @@ def is_valid_uuid(uuid_to_test, version=4):
         return str(uuid_obj) == str(uuid_to_test)
     except ValueError:
         return False
+
+
+class CreateMLBaseMixin:
+    def dispatch(self, request, *args, **kwargs):
+        """
+        Mixin which will check the ML models for a user and create a new one if not found.
+        """
+        user_id = request.META["user"].user_id
+        task_configs = get_task_config()
+        for task_config in task_configs:
+            _, model_string = create_pydantic_model(
+                task_config.get("schema_example"),
+            )
+
+            ml_model_config, _ = MLModelConfig.objects.get_or_create(
+                model_save_path=task_config.get("model_save_path"),
+                dataset_path=task_config.get("dataset_path"),
+                type=task_config.get("model"),
+                system_prompt=task_config.get("system_prompt"),
+                user_prompt_template=task_config.get("user_prompt_template"),
+                schema_example=task_config.get("schema_example"),
+                temperature=1,
+                model_string=model_string,
+            )
+
+            ml_model, created = MLModel.objects.get_or_create(
+                user_id=user_id,
+                config=ml_model_config,
+                task=task_config.get("task"),
+                name=task_config.get("model"),
+                huggingface_id=task_config.get("model_save_path"),
+                is_locally_cached=False,
+                is_trained_at_autotune=False,
+                label_studio_element=task_config.get("label_studio_element"),
+                telemetry_data_field=task_config.get("telemetry_data_field"),
+            )
+
+            if created:
+                print(f"Created new MLModel for user {user_id}with ID {ml_model.id}")
+
+        return super().dispatch(request, *args, **kwargs)
 
 
 class CacheDatasetMixin:
