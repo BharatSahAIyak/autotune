@@ -9,6 +9,7 @@ from .views import (
     IterateWorkflowView,
     MLModelDetailView,
     MLModelListView,
+    ModelDeployView,
     PromptViewSet,
     SingleWorkflowView,
     TrainModelView,
