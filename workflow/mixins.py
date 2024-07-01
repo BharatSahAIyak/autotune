@@ -180,6 +180,8 @@ class CacheDatasetMixin:
             if not task_mapping:
                 raise ValueError("Please give a valid task type.")
 
+            workflow_id = None
+
             # When user gives a HF dataset to use for caching the data
             if dataset:
                 workflow = Workflows.objects.filter(
