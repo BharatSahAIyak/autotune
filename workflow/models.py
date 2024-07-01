@@ -99,7 +99,7 @@ class MLModel(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
     name = models.CharField(max_length=255)
     huggingface_id = models.CharField(null=True, blank=True)
-    uploaded_at = models.DateTimeField(null=True, blank=True)
+    last_trained = models.DateTimeField(null=True, blank=True)
     latest_commit_hash = models.UUIDField(null=True, blank=True)
     is_trained_at_autotune = models.BooleanField(default=False)
     is_locally_cached = models.BooleanField(default=False)
@@ -110,9 +110,8 @@ class MLModel(models.Model):
         null=True,
         blank=True,
     )
-    label_studio_component = models.TextField(null=True, blank=True)
-    rendering_config = models.TextField(null=True, blank=True)
-    label_studio_comp = models.TextField(null=True, blank=True)
+    label_studio_element = models.JSONField(null=True, blank=True)
+    telemetry_data_field = models.JSONField(null=True, blank=True)
     deployed_at = models.DateTimeField(null=True, blank=True)
     config = models.ForeignKey(
         MLModelConfig,
@@ -121,6 +120,16 @@ class MLModel(models.Model):
         null=True,
         blank=True,
     )
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="ml_model")
+
+
+class TrainingMetadata(models.Model):
+    trained_at = models.DateTimeField(auto_now_add=True)
+    model = models.ForeignKey(
+        MLModel, on_delete=models.CASCADE, related_name="metadata"
+    )
+    logs = models.JSONField(default=dict)
+    metrics = models.JSONField(default=dict)
 
 
 class WorkflowConfig(models.Model):
@@ -273,16 +282,6 @@ class Task(models.Model):
     )
     generated_samples = models.IntegerField(default=0)
     total_samples = models.IntegerField(default=0)
-
-
-class TrainingMetadata(models.Model):
-    trained_at = models.DateTimeField(auto_now_add=True)
-    model = models.ForeignKey(
-        MLModel, on_delete=models.CASCADE, related_name="metadata"
-    )
-    logs = models.JSONField(default=dict)
-    metrics = models.JSONField(default=dict)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="training")
 
 
 class Log(models.Model):

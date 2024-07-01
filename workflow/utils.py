@@ -210,7 +210,7 @@ def get_task_config(task=None):
         "text_classification": {
             "model": "BERT",
             "task": "text_classification",
-            "labelStudioElement": {
+            "label_studio_element": {
                 "name": "Text Classification",
                 "config": {
                     "choices": [
@@ -224,7 +224,7 @@ def get_task_config(task=None):
                     ]
                 },
             },
-            "telemetryDataField": {"input": "query", "output": None},
+            "telemetry_data_field": {"input": "query", "output": None},
             "model_save_path": "SamagraDataGov/e2e-test",
             "dataset_path": "SamagraDataGov/akai_text_01",
             "system_prompt": """The classifier model that you're training is a BERT classifier with the following classes and class descriptions : 
@@ -241,7 +241,7 @@ def get_task_config(task=None):
         "ner": {
             "model": "distilbert-finetuned",
             "task": "NER",
-            "labelStudioElement": {
+            "label_studio_element": {
                 "name": "Named Entity Recognition",
                 "config": {
                     "labels": [
@@ -255,7 +255,7 @@ def get_task_config(task=None):
                     ]
                 },
             },
-            "telemetryDataField": {"input": "query", "output": "NER"},
+            "telemetry_data_field": {"input": "query", "output": "NER"},
             "model_save_path": "",
             "dataset_path": "",
             "system_prompt": "sample system prompt",
@@ -265,7 +265,7 @@ def get_task_config(task=None):
         "neural_coreference": {
             "model": "FCoref",
             "task": "Neural Coreference",
-            "labelStudioElement": {
+            "label_studio_element": {
                 "name": "Translation",
                 "config": {
                     "leftHeader": "Read the previous conversation",
@@ -274,7 +274,7 @@ def get_task_config(task=None):
                     "rightTextAreaName": "Coreferenced text",
                 },
             },
-            "telemetryDataField": {"input": "query", "output": "coreferencedText"},
+            "telemetry_data_field": {"input": "query", "output": "coreferencedText"},
             "model_save_path": "",
             "dataset_path": "",
             "system_prompt": "sample system prompt",
