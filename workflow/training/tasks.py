@@ -5,16 +5,13 @@ import logging
 import evaluate
 import numpy as np
 from datasets import load_dataset
-from optimum.onnxruntime import ORTModelForSequenceClassification
 from transformers import (
     AutoModelForSequenceClassification,
-    AutoTokenizer,
     DataCollatorWithPadding,
     Trainer,
     TrainingArguments,
 )
 from huggingface_hub import HfApi
-
 from colbert.training.utils import print_progress, manage_checkpoints
 from colbert.infra import ColBERTConfig
 from colbert.modeling.colbert import ColBERT
@@ -32,6 +29,7 @@ from sklearn.preprocessing import LabelEncoder
 logger = logging.getLogger(__name__)
 
 
+
 def get_task_class(task):
     tasks = {
         "text_classification": TextClassification,
@@ -42,63 +40,63 @@ def get_task_class(task):
     return task_class
 
 
-class Tasks(ABC):
+class ModelTask(ABC):
     def __init__(self, task: str, model_name: str, version: str):
         self.task = task
         self.model_name = model_name
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name, revision=version)
-        self.onnx = None
         self.model = None
         self.data_collator = None
         self.Trainer = None
         self.TrainingArguments = None
         self.metrics = None
-        self.tokenized_dataset = None
-        self._load_model_requirements()
-        # self.Trainer = partial(
-        #     self.Trainer,
-        #     model=self.model,
-        #     train_dataset=self.tokenized_dataset["train"],
-        #     eval_dataset=self.tokenized_dataset["test"],
-        #     tokenizer=self.tokenizer,
-        #     data_collator=self.data_collator,
-        #     compute_metrics=self.compute_metrics,
-        # )
+        self.dataset = None
+        self._init_model()
 
     @abstractmethod
-    def _load_model_requirements(self):
+    def _init_model(self):
         pass
 
     @abstractmethod
     def _prepare_dataset(self):
+        """Initalize dataset object"""
         pass
 
     @abstractmethod
     def compute_metrics(self, eval_pred):
+        """Compute metrics for the model"""
         pass
 
     @abstractmethod
     def push_to_hub(self, trainer, save_path):
+        """Saving model to huggingface hub"""
         pass
 
+    @abstractmethod
+    def get_training_args(self, req_data, dataset):
+        """Get training arguments for the model"""
+        NotImplementedError("Implement get_training_args method")
 
-# needs train and validation in the dataset
-# needs 'class'/'label' column in the dataset
-class TextClassification(Tasks):
+    # TODO: Implement Predict method for both of the classes
+    # def predict(self):
+    #     """Predict using the model"""
+    #     pass
+
+
+# Note: needs train and validation in the dataset
+# Note: needs 'class'/'label' column in the dataset
+class TextClassification(ModelTask):
     def __init__(self, model_name: str, version: str, args):
         super().__init__("text_classification", model_name, version)
         self.metrics = evaluate.load("f1")
-        self.onnx = ORTModelForSequenceClassification
         self.le = LabelEncoder()
         self.label2id = None
         if "label2id" in args and len(args["label2id"]) != 0:
             self.label2id = args["label2id"]
 
-    def load_dataset(self, dataset):
-        self.dataset = load_dataset(dataset).shuffle()
-        self._prepare_dataset()
-        self._load_model()
-        return self.dataset
+    def _init_model(self):
+        """Define Trainer class and arguments class"""
+        self.Trainer = Trainer
+        self.TrainingArguments = TrainingArguments
 
     def _load_model(self):
         num_labels = len(self.dataset["train"].unique("class"))
@@ -150,6 +148,12 @@ class TextClassification(Tasks):
     def __preprocess_function(self, examples):
         return self.tokenizer(examples["text"], truncation=True, padding=True)
 
+    def load_dataset(self, dataset):
+        self.dataset = load_dataset(dataset).shuffle()
+        self._prepare_dataset()
+        self._load_model()
+        return self.dataset
+
     def compute_metrics(self, eval_pred):
         predictions, labels = eval_pred
         predictions = np.argmax(predictions, axis=1)
@@ -180,40 +184,26 @@ class TextClassification(Tasks):
         )
 
 
-class Colbert(Tasks):
-    def __init__(self, model_name: str, version: str, kwargs):
+class Colbert(ModelTask):
+    def __init__(self, model_name: str, version: str):
         super().__init__("embedding", model_name, version)
+        # TODO: Implement evalutation metrics
+        # self.metrics = ["mmr", "recall@k", "ndcg@k", "recall@k", "ndcg@k"]
         self.metrics = evaluate.combine(["cosine_similarity"])
         self.model_name = model_name
-        self.checkpoint = model_name
-        self._load_model_requirements()
+        self._init_model()
+
+    def _init_model(self):
+        """Define Trainer class and Model"""
+        self.Trainer = ColBERTTrainer
+        self.TrainingArgument = ColBERTTrainingArgument
+        self.model = ColBERT
 
     def load_dataset(self, dataset):
         path = snapshot_download(
             repo_id=dataset, repo_type="dataset", cache_dir="./data/"
         )
         return path
-
-    def _load_model_requirements(self):
-        """Initalise Trainer class"""
-        self.Trainer = ColBERTTrainer
-        self.TrainingArgument = ColBERTTrainingArgument
-        self.model = ColBERT
-
-    def _prepare_dataset(self):
-        # TODO: Initalize dataset related fields
-        pass
-
-    def __preprocess_function(self, examples):
-        # TODO: Do dataset preparation related thing, output inputs of the model
-        pass
-
-    def __postprocess_text(self, preds, labels):
-        # TODO: Do post processing on preds
-        # preds = [pred.strip() for pred in preds]
-        # labels = [[label.strip()] for label in labels]
-        # return preds, labels
-        pass
 
     def get_training_args(self, request, dataset):
         return ColBERTTrainingArgument(
@@ -253,6 +243,10 @@ class Colbert(Tasks):
     def push_to_hub(self, trainer, save_path, hf_token=None):
         trainer.push_to_hub(save_path, hf_token)
 
+    def predict(self):
+        # TODO: Implement prediction
+        pass
+
 
 @dataclass
 class ColBERTTrainingArgument:
@@ -291,6 +285,7 @@ class ColBERTTrainingArgument:
 
 class ColBERTTrainer:
     def __init__(self, model, args, callbacks=None) -> None:
+        # TODO: Implement callbacks
         self.args = args
         self.model = model
         self.config = self.args.config
@@ -316,9 +311,9 @@ class ColBERTTrainer:
         self.optimizer.zero_grad()
 
     def _init_scheduler(self):
-        # print(
-        #     f"#> LR will use {config.warmup} warmup steps and linear decay over {config.maxsteps} steps."
-        # )
+        logger.info(
+            f"#> LR will use {self.config.warmup} warmup steps and linear decay over {self.config.maxsteps} steps."
+        )
         self.scheduler = get_linear_schedule_with_warmup(
             self.optimizer,
             num_warmup_steps=self.config.warmup,
@@ -414,7 +409,7 @@ class ColBERTTrainer:
 
                         if self.config.use_ib_negatives:
                             if self.config.rank < 1:
-                                print(
+                                logger.info(
                                     "EPOCH ",
                                     epoch,
                                     " \t\t\t\t",
@@ -450,7 +445,7 @@ class ColBERTTrainer:
                 amp.step(self.model, self.optimizer, self.scheduler)
 
             if self.config.rank < 1:
-                print_message(batch_idx, train_loss)
+                logger.info(print_message(batch_idx, train_loss, condition=False))
                 epoch_save_path = f"./model_checkpoint/epoch_{epoch}/"
                 os.makedirs(epoch_save_path, exist_ok=True)
                 checkpoint_filename = f"checkpoint_batch_{batch_idx+1}.pt"
@@ -469,7 +464,7 @@ class ColBERTTrainer:
                 checkpoint_paths.append(full_checkpoint_path + "/colbert/")
 
         if self.config.rank < 1:
-            print_message("#> Done with all triples!")
+            logger.info(print_message("#> Done with all triples!", condition=False))
             ckpt_path = manage_checkpoints(
                 self.config,
                 self.model,
@@ -482,10 +477,10 @@ class ColBERTTrainer:
         self.checkpoint_paths = checkpoint_paths
         self.losses = loss_history
 
-        print(self.losses)
+        logger.info(self.losses)
 
     def predict(self):
-        # FIXME: Implement prediction
+        # TODO: Implement prediction
         pass
 
     @property
