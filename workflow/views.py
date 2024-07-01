@@ -31,6 +31,7 @@ from .models import (
     DatasetData,
     Examples,
     MLModel,
+    MLModelConfig,
     Prompt,
     Task,
     User,
@@ -1038,7 +1039,7 @@ class ModelDeployView(UserIDMixin, APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class ForceAlignmentView(APIView, CacheDatasetMixin, UserIDMixin):
+class ForceAlignmentView(UserIDMixin, CacheDatasetMixin, APIView):
 
     def post(self, request, *args, **kwargs):
 
@@ -1100,3 +1101,38 @@ class PingCheckView(APIView):
     def get(self, request):
         resp = {"status": "ok", "details": {"autotune": {"status": "up"}}}
         return Response(resp, status=status.HTTP_200_OK)
+
+
+from workflow.generator.generator_model import ModelDataFetcher
+
+
+class ModelIterationView(UserIDMixin, CreateMLBaseMixin, APIView):
+    """
+    Custom implementation of the iteration logic suited for samples during model training
+    """
+
+    def post(self, request, *args, **kwargs):
+        user_id = request.META["user"].user_id
+
+        task_type = request.data.get("task_type")
+        dataset = request.data.get("dataset")
+        input = request.data.get("input")
+        output = request.data.get("output")
+
+        model: MLModel = get_object_or_404(
+            MLModel, user_id=user_id, task=task_type, config__dataset_path=dataset
+        )
+
+        model_config: MLModelConfig = model.config
+
+        pydantic_model, _ = create_pydantic_model(model_config.schema_example)
+
+        data_fetcher = ModelDataFetcher(model_config, model, pydantic_model)
+
+        data_fetcher.generate_or_refine(
+            input=input,
+            output=output,
+            task_type=task_type,
+        )
+
+        return Response(data_fetcher.examples)

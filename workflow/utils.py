@@ -235,7 +235,8 @@ def get_task_config(task=None):
                                 weather : The farmer query is asking about the weather for a district /place e.g. : 'What's the weather forecast for Sundargarh?'
                                 price : The farmer query is asking about the price of some crop e.g. 'Price for paddy'
                                 non_agri : The farmer query is just some salutation or unrelated to agri""",
-            "user_prompt_template": "{{workflow.user_prompt}}",
+            "user_prompt_template": """You have been given a sentence "{{sentence}}" which should be classified to {{target_class}}. Can you create 10 more examples of sentences extremely similar to "{{sentence}}" all of which should be classifed to {{target_class}}. Make sure they are not sentences which can be classified to other classes like [{{classes_other_than_target}}]
+            """,
             "schema_example": {"sentence": "string", "label": "string"},
         },
         "ner": {
