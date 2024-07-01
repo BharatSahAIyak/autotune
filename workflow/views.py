@@ -713,7 +713,7 @@ def add_user(request):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class TrainModelView(UserIDMixin, CreateMLBaseMixin, APIView):
+class TrainModelView(UserIDMixin, CreateMLBaseMixin, CacheDatasetMixin, APIView):
 
     @swagger_auto_schema(
         operation_description="Start training a model with the provided data.",
