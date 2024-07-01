@@ -25,12 +25,20 @@ def deploy_model(self, request_data):
 
         logger.info("Running the deployment workflow.")
 
-        run_github_workflow(workflow_name=gh_workflow, service_names=service_names)
+        run_github_workflow(
+            workflow_name=gh_workflow, inputs={"service_names": service_names}
+        )
 
+        # TODO: Generalise the deployment workflow
         run_github_workflow(
             workflow_name="deploy-service.yaml",
-            service_names="ai-tools",
             repo="BharatSahAIyak/docker-bhasai",
+            branch="dev",
+            inputs={
+                "profiles": "application database",
+                "environment": "dev",
+                "services": "ai-tools",
+            },
         )
     except Exception as e:
         logger.error(f"Failed to deploy model: \n{e}")
@@ -38,21 +46,20 @@ def deploy_model(self, request_data):
 
 def run_github_workflow(
     workflow_name: str,
-    service_names: str,
     repo: str = settings.AI_TOOLS_REPO,
     branch: str = settings.AI_TOOLS_REPO_BRANCH,
+    inputs: dict = {},
 ):
+    logger.info("Dispatching the workflow: {}.".format(workflow_name))
     g = Github(auth=GithubAuth.Token(settings.GITHUB_PAT))
     repo = g.get_repo(repo)
     ref = repo.get_branch(branch)
     workflow = repo.get_workflow(workflow_name)
     now = datetime.datetime.now()
 
-    is_dispatched = workflow.create_dispatch(
-        ref=ref, inputs={"service_names": service_names}
-    )
+    is_dispatched = workflow.create_dispatch(ref=ref, inputs=inputs)
     if not is_dispatched:
-        return Exception("Failed to dispatch the workflow: {}.".format(workflow_name))
+        raise Exception("Failed to dispatch the workflow: {}.".format(workflow_name))
 
     logger.info("Waiting for the workflow to start.")
     while (

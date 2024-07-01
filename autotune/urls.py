@@ -24,9 +24,8 @@ from rest_framework import permissions
 from workflow.views import (
     ConfigView,
     DatasetView,
-    HealthCheckView,
-    PingCheckView,
-    ModelDeployView, TaskView,
+    ModelDeployView,
+    TaskView,
 )
 
 schema_view = get_schema_view(
@@ -60,4 +59,9 @@ urlpatterns = [
     path("v2/workflow/", include(("workflowV2.urls", "workflowV2"), namespace="v2")),
     path("config", ConfigView.as_view(), name="config"),
     path("datasets/", DatasetView.as_view(), name="dataset-list"),
+    path(
+        "deploy",
+        ModelDeployView.as_view(),
+        name="deploy-model",
+    ),
 ]

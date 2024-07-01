@@ -81,10 +81,5 @@ urlpatterns = [
     path("train", TrainModelView.as_view(), name="train"),
     path("models/", MLModelListView.as_view(), name="model-list"),
     path("models/<uuid:model_id>/", MLModelDetailView.as_view(), name="model-detail"),
-    path("force-align",ForceAlignmentView.as_view(),name="force-alignment")
-    path(
-        "deploy",
-        ModelDeployView.as_view(),
-        name="deploy-model",
-    ),
+    path("force-align", ForceAlignmentView.as_view(), name="force-alignment"),
 ]
