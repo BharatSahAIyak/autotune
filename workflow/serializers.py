@@ -286,11 +286,12 @@ class MLModelSerializer(serializers.ModelSerializer):
                 "help_text": "The date and time when the model was last updated."
             },
             "id": {"help_text": "The unique identifier of the model."},
+            "task": {"help_text": "The task for which the model was trained."},
             "name": {"help_text": "The name of the model."},
             "huggingface_id": {
                 "help_text": "The ID of the model on Huggingface, if available."
             },
-            "uploaded_at": {
+            "last_trained": {
                 "help_text": "The date and time when the model was uploaded.",
                 "required": False,
             },

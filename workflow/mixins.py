@@ -123,6 +123,7 @@ class CreateMLBaseMixin:
             ml_model, created = MLModel.objects.get_or_create(
                 user_id=user_id,
                 config=ml_model_config,
+                task=task_config.get("task"),
                 name=task_config.get("model"),
                 huggingface_id=task_config.get("model_save_path"),
                 is_locally_cached=False,
@@ -132,10 +133,7 @@ class CreateMLBaseMixin:
             )
 
             if created:
-                # If the model is newly created, you might want to log this event or perform additional setup
                 print(f"Created new MLModel for user {user_id}with ID {ml_model.id}")
-
-            break
 
         return super().dispatch(request, *args, **kwargs)
 

@@ -259,7 +259,7 @@ def get_task_config(task=None):
             "model_save_path": "",
             "dataset_path": "",
             "system_prompt": "sample system prompt",
-            "user_prompt": "sample user prompt",
+            "user_prompt_template": "sample user prompt",
             "schema_example": {"sentence": "string", "label": "string"},
         },
         "neural_coreference": {
@@ -278,7 +278,7 @@ def get_task_config(task=None):
             "model_save_path": "",
             "dataset_path": "",
             "system_prompt": "sample system prompt",
-            "user_prompt": "sample user prompt",
+            "user_prompt_template": "sample user prompt",
             "schema_example": {"sentence": "string", "label": "string"},
         },
     }

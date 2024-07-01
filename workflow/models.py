@@ -121,6 +121,7 @@ class MLModel(models.Model):
         blank=True,
     )
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="ml_model")
+    task = models.CharField(max_length=255, null=True, blank=True)
 
 
 class TrainingMetadata(models.Model):

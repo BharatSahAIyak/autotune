@@ -24,7 +24,7 @@ from workflow.health import HealthCheck
 from workflow.training.train import train
 
 from .align_tasks import align_task
-from .mixins import CacheDatasetMixin, UserIDMixin
+from .mixins import CacheDatasetMixin, CreateMLBaseMixin, UserIDMixin
 from .models import (
     Dataset,
     DatasetData,
@@ -711,7 +711,7 @@ def add_user(request):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class TrainModelView(UserIDMixin, CacheDatasetMixin, APIView):
+class TrainModelView(UserIDMixin, CreateMLBaseMixin, APIView):
 
     @swagger_auto_schema(
         operation_description="Start training a model with the provided data.",
@@ -753,10 +753,11 @@ class TrainModelView(UserIDMixin, CacheDatasetMixin, APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class MLModelListView(APIView):
+class MLModelListView(UserIDMixin, CreateMLBaseMixin, APIView):
 
     def get(self, request, format=None):
-        models = MLModel.objects.all()
+        user_id = request.META["user"].user_id
+        models = MLModel.objects.filter(user_id=user_id)
         serializer = MLModelSerializer(models, many=True)
         return Response(serializer.data)
 
