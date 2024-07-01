@@ -25,6 +25,7 @@ from workflow.views import (
     ConfigView,
     DatasetView,
     HealthCheckView,
+    ModelDeployView,
     ModelIterationView,
     PingCheckView,
     TaskView,
@@ -64,4 +65,9 @@ urlpatterns = [
     path("health/", HealthCheckView.as_view(), name="health_check"),
     path("health/ping", PingCheckView.as_view(), name="health_check"),
     path("model/iterate/", ModelIterationView.as_view(), name="model-iteration"),
+    path(
+        "deploy",
+        ModelDeployView.as_view(),
+        name="deploy-model",
+    ),
 ]
