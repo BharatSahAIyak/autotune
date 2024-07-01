@@ -928,28 +928,26 @@ class DatasetView(UserIDMixin, CreateMLBaseMixin, CacheDatasetMixin, APIView):
         to HF just before training is triggered
 
         Parameters:
-         - workflow_id(UUID): The ID of the workflow for which the dataset is to be fetched.
+        - workflow_id(UUID): The ID of the workflow for which the dataset is to be fetched.
         Body:
-         - dataset(str): The Hugging Face dataset. If this is not provided, then fall back to the workflow dataset- Optional.
+        - dataset(str): The Hugging Face dataset. If this is not provided, then fall back to the workflow dataset- Optional.
         """
-        input = request.data.get("input", None)
-        output = request.data.get("output", None)
+        data = request.data.get("data", None)
         user = request.META["user"]
 
-        if not input:
+        # each value of data should be a JSON with input and output
+        if not data:
             return Response(
-                {"error": "Input is required."},
+                {"error": "Data is required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if not output:
-            return Response(
-                {
-                    "error": "Output is required.",
-                    "workflow_id": request.META.get("workflow_id"),
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        for d in data:
+            if not d.get("input") or not d.get("output"):
+                return Response(
+                    {"error": "Input and Output are required."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         # will be a valid dataset id, handled in the mixin
         cached_dataset_id = request.META.get("cached_dataset_id")
@@ -958,12 +956,15 @@ class DatasetView(UserIDMixin, CreateMLBaseMixin, CacheDatasetMixin, APIView):
         task_mapping = get_task_mapping(task)
         keys = list(task_mapping.keys())
 
-        record_data = DatasetData(dataset=dataset_object, file="train.csv", user=user)
-
-        setattr(record_data, keys[0], input)
-        setattr(record_data, keys[1], output)
-
-        record_data.save()
+        dataset_data_to_create = []
+        for d in data:
+            record_data = DatasetData(
+                dataset=dataset_object, file="train.csv", user=user
+            )
+            setattr(record_data, keys[0], d.get("input"))
+            setattr(record_data, keys[1], d.get("output"))
+            dataset_data_to_create.append(record_data)
+        DatasetData.objects.bulk_create(dataset_data_to_create)
 
         return Response(
             {

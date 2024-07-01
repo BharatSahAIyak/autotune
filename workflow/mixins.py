@@ -7,6 +7,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.http import JsonResponse
 from django.utils.decorators import method_decorator
+from django.utils.deprecation import MiddlewareMixin
 from django.views.decorators.csrf import csrf_exempt
 from huggingface_hub import HfApi
 from rest_framework import status
@@ -19,33 +20,6 @@ from .models import Dataset, DatasetData, MLModel, MLModelConfig, Workflows
 from .utils import create_pydantic_model, get_task_config, get_task_mapping
 
 logger = logging.getLogger(__name__)
-
-
-class LoggingMixin:
-    """
-    Provides full logging of requests
-    """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.logger = logging.getLogger("django.request")
-
-    def initial(self, request, *args, **kwargs):
-        try:
-            extra = {
-                "request": request.data,
-                "method": request.method,
-                "endpoint": request.path,
-                "user": request.user.username,
-                "ip_address": request.META.get("REMOTE_ADDR"),
-                "user_agent": request.META.get("HTTP_USER_AGENT"),
-                "headers": dict(request.headers),
-            }
-            self.logger.info(f"Request received: {extra}")
-        except Exception:
-            self.logger.exception("Error logging request data")
-
-        super().initial(request, *args, **kwargs)
 
 
 class UserIDMixin:
@@ -151,6 +125,9 @@ class CreateMLBaseMixin:
         print(f"Created new workflow '{workflow_name}' for model ID {ml_model.id}")
 
 
+import json
+
+
 class CacheDatasetMixin:
     @method_decorator(csrf_exempt)
     def dispatch(self, request, *args, **kwargs):
@@ -168,8 +145,9 @@ class CacheDatasetMixin:
                 dataset = request.GET.get("dataset")
                 task_type = request.GET.get("task_type")
             elif request.method == "POST":
-                dataset = request.POST.get("dataset")
-                task_type = request.POST.get("task_type")
+                request_data = json.loads(request.body)
+                dataset = request_data.get("dataset")
+                task_type = request_data.get("task_type")
 
             logger.info(f"recieved dataset {dataset} and task_type {task_type}")
 
