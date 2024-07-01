@@ -225,6 +225,18 @@ def get_task_config(task=None):
                 },
             },
             "telemetryDataField": {"input": "query", "output": None},
+            "model_save_path": "SamagraDataGov/e2e-test",
+            "dataset_path": "SamagraDataGov/akai_text_01",
+            "system_prompt": """The classifier model that you're training is a BERT classifier with the following classes and class descriptions : 
+                                agricultural_scheme: The farmer query is about schemes in Odisha
+                                agriculture: General agri queries
+                                pest: The farmer query is about pests
+                                seed: The farmer query is about seed varieties
+                                weather : The farmer query is asking about the weather for a district /place e.g. : 'What's the weather forecast for Sundargarh?'
+                                price : The farmer query is asking about the price of some crop e.g. 'Price for paddy'
+                                non_agri : The farmer query is just some salutation or unrelated to agri""",
+            "user_prompt_template": "{{workflow.user_prompt}}",
+            "schema_example": {"sentence": "string", "label": "string"},
         },
         "ner": {
             "model": "distilbert-finetuned",
@@ -244,6 +256,11 @@ def get_task_config(task=None):
                 },
             },
             "telemetryDataField": {"input": "query", "output": "NER"},
+            "model_save_path": "",
+            "dataset_path": "",
+            "system_prompt": "sample system prompt",
+            "user_prompt": "sample user prompt",
+            "schema_example": {"sentence": "string", "label": "string"},
         },
         "neural_coreference": {
             "model": "FCoref",
@@ -258,6 +275,11 @@ def get_task_config(task=None):
                 },
             },
             "telemetryDataField": {"input": "query", "output": "coreferencedText"},
+            "model_save_path": "",
+            "dataset_path": "",
+            "system_prompt": "sample system prompt",
+            "user_prompt": "sample user prompt",
+            "schema_example": {"sentence": "string", "label": "string"},
         },
     }
 

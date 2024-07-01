@@ -79,6 +79,20 @@ class Dataset(models.Model):
     )
 
 
+class MLModelConfig(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    model_save_path = models.TextField()
+    dataset_path = models.TextField()
+    type = models.CharField(max_length=255)
+    system_prompt = models.TextField()
+    user_prompt_template = models.TextField()
+    schema_example = models.JSONField(default=dict)
+    temperature = models.IntegerField(
+        default=1, validators=[MinValueValidator(0), MaxValueValidator(2)]
+    )
+    model_string = models.TextField()
+
+
 class MLModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -99,6 +113,14 @@ class MLModel(models.Model):
     label_studio_component = models.TextField(null=True, blank=True)
     rendering_config = models.TextField(null=True, blank=True)
     label_studio_comp = models.TextField(null=True, blank=True)
+    deployed_at = models.DateTimeField(null=True, blank=True)
+    config = models.ForeignKey(
+        MLModelConfig,
+        on_delete=models.CASCADE,
+        related_name="models",
+        null=True,
+        blank=True,
+    )
 
 
 class WorkflowConfig(models.Model):
