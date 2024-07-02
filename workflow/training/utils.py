@@ -1,9 +1,7 @@
 from django.conf import settings
-from huggingface_hub import snapshot_download
-from huggingface_hub import HfApi
-from workflow.training import TextClassification
-from workflow.training import Colbert
-from workflow.training import NamedEntityRecognition
+from huggingface_hub import HfApi, snapshot_download
+
+from workflow.training import Colbert, NamedEntityRecognition, TextClassification
 
 
 def download_model(repo_id):
