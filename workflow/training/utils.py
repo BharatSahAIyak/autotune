@@ -1,6 +1,9 @@
 from django.conf import settings
 from huggingface_hub import snapshot_download
 from huggingface_hub import HfApi
+from workflow.training import TextClassification
+from workflow.training import Colbert
+from workflow.training import NamedEntityRecognition
 
 
 def download_model(repo_id):
@@ -33,3 +36,14 @@ def push_to_hub(folder_path, repo_id, repo_type):
     api = HfApi(endpoint="https://huggingface.co", token=settings.HUGGING_FACE_TOKEN)
     api.create_repo(repo_id=repo_id, repo_type=repo_type, exist_ok=True)
     api.upload_folder(folder_path=folder_path, repo_id=repo_id, repo_type=repo_type)
+
+
+def get_task_class(task):
+    tasks = {
+        "text_classification": TextClassification,
+        "embedding": Colbert,
+        "ner": NamedEntityRecognition,
+    }
+
+    task_class = tasks.get(task)
+    return task_class

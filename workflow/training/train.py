@@ -12,9 +12,8 @@ from huggingface_hub import CommitOperationAdd, HfApi, login
 from transformers import TrainerCallback
 
 from workflow.models import Dataset, DatasetData, MLModel, Task, TrainingMetadata, User
+from .utils import get_task_class
 from workflow.utils import get_task_mapping
-
-from .tasks import get_task_class
 
 logger = get_task_logger(__name__)
 
@@ -96,32 +95,33 @@ def train_model(celery, req_data, task_id):
 
     trainer.train()
 
-    _, _, metrics = trainer.predict(task.tokenized_dataset["test"])
+    metrics = trainer.evaluate(task.tokenized_dataset["test"])
     json_metrics = json.dumps(metrics)
     json_bytes = json_metrics.encode("utf-8")
     fileObj = io.BytesIO(json_bytes)
 
     meta = {"logs": trainer.state.log_history, "metrics": metrics}
+    logger.info(metrics)
     celery.update_state(state="PUSHING", meta=meta)
 
     api_key = settings.HUGGING_FACE_TOKEN
     login(token=api_key)
     task.push_to_hub(trainer, req_data["save_path"], hf_token=api_key)
 
-    # hfApi = HfApi(endpoint="https://huggingface.co", token=api_key)
-    # upload = hfApi.upload_file(
-    #     path_or_fileobj=fileObj,
-    #     path_in_repo="metrics.json",
-    #     repo_id=req_data["save_path"],
-    #     repo_type="model",
-    # )
+    hfApi = HfApi(endpoint="https://huggingface.co", token=api_key)
+    upload = hfApi.upload_file(
+        path_or_fileobj=fileObj,
+        path_in_repo="metrics.json",
+        repo_id=req_data["save_path"],
+        repo_type="model",
+    )
 
-    # meta["latest_commit_hash"] = upload.commit_url.split("/")[-1]
+    meta["latest_commit_hash"] = upload.commit_url.split("/")[-1]
 
-    if os.path.exists(f"./results_{celery.request.id}"):
-        shutil.rmtree(f"./results_{celery.request.id}")
-    if os.path.exists(f"./logs_{celery.request.id}"):
-        shutil.rmtree(f"./logs_{celery.request.id}")
+    # if os.path.exists(f"./results_{celery.request.id}"):
+    #     shutil.rmtree(f"./results_{celery.request.id}")
+    # if os.path.exists(f"./logs_{celery.request.id}"):
+    #     shutil.rmtree(f"./logs_{celery.request.id}")
 
     logger.info("Training complete")
 
