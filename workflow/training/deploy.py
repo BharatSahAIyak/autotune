@@ -15,7 +15,6 @@ logger = get_task_logger(__name__)
 def deploy_model(self, request_data):
     finetuned_model_id = request_data["finetuned_model"]
     deployment_model_id = request_data["deployment_model"]
-    gh_workflow = request_data["gh_workflow"]
     service_names = request_data["service_names"]
     try:
         model_path = download_model(repo_id=finetuned_model_id)
@@ -25,19 +24,15 @@ def deploy_model(self, request_data):
         )
         logger.debug(f"Pushed model to Hugging Face Hub: {deployment_model_id}")
 
-        run_github_workflow(
-            workflow_name=gh_workflow, inputs={"service_names": service_names}
-        )
-
         # TODO: Generalise the deployment workflow
         run_github_workflow(
             workflow_name="deploy-service.yaml",
             repo="BharatSahAIyak/docker-bhasai",
             branch="dev",
             inputs={
-                "profiles": "application database",
+                "profiles": "ai-tools",
                 "environment": "dev",
-                "services": "ai-tools",
+                "services": service_names,
             },
         )
     except Exception as e:
