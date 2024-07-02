@@ -114,35 +114,6 @@ class DataFetcher:
                 iteration=iteration + 1,
             )
 
-    def request_and_save(
-        self,
-        user_prompt,
-        workflow_config_id,
-        llm_model,
-        iteration,
-        batch_index,
-        workflow_id,
-        task_id,
-        Model,
-        fields,
-        prompt_id,
-    ):
-        response = self.call_llm_generate(
-            user_prompt, workflow_config_id, llm_model, iteration, batch_index
-        )
-
-        logger.info("response received from LLM")
-
-        if response:
-            self.generated += self.parse_and_save_examples(
-                workflow_id=workflow_id,
-                response=response,
-                Model=Model,
-                fields=fields,
-                task_id=task_id,
-                prompt_id=prompt_id,
-            )
-
     def construct_user_prompt(self, workflow_id, user_prompt, refine=False):
         """
         Construct the user prompt to send to the language model based on the workflow settings,
@@ -180,32 +151,75 @@ class DataFetcher:
 
         return prompt
 
+    def request_and_save(
+        self,
+        user_prompt,
+        workflow_config_id,
+        llm_model,
+        iteration,
+        batch_index,
+        workflow_id,
+        task_id,
+        Model,
+        fields,
+        prompt_id,
+    ):
+        config = get_object_or_404(WorkflowConfig, id=workflow_config_id)
+        response = self.call_llm_generate(
+            user_prompt,
+            config.system_prompt,
+            config.model_string,
+            config.temperature,
+            llm_model,
+            iteration,
+            batch_index,
+        )
+
+        logger.info("response received from LLM")
+
+        if response:
+            self.generated += self.parse_and_save_examples(
+                workflow_id=workflow_id,
+                response=response,
+                Model=Model,
+                fields=fields,
+                task_id=task_id,
+                prompt_id=prompt_id,
+            )
+
     def call_llm_generate(
-        self, user_prompt, workflow_config_id, llm_model, iteration=None, batch=None
+        self,
+        user_prompt,
+        system_prompt,
+        model_string,
+        temperature,
+        llm_model,
+        iteration=None,
+        batch=None,
     ):
         logger.info(f"Running query for iteration {iteration} and batch {batch}")
-        config = get_object_or_404(WorkflowConfig, id=workflow_config_id)
 
-        system_prompt = config.system_prompt
+        system_prompt = system_prompt
 
         system_prompt += (
             "\nEnsure that the JSON output adheres to the provided structure\n"
         )
         system_prompt += "Pydantic classes for json structure: \n"
 
-        system_prompt += f"\n{config.model_string}\n"
+        system_prompt += f"\n{model_string}\n"
 
-        # logger.info(f"system_prompt: {system_prompt}")
+        logger.info(f"system_prompt: {system_prompt}")
         logger.info(f"user_prompt: {user_prompt}")
         if (
             llm_model == "gpt-4-turbo-preview"
             or llm_model == "gpt-4-turbo"
             or llm_model == "gpt-3.5-turbo-0125"
             or llm_model == "gpt-3.5-turbo"
+            or llm_model == "gpt-4o"
         ):
             chat_completion = client.chat.completions.create(
                 model=llm_model,
-                temperature=config.temperature,
+                temperature=temperature,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
@@ -216,7 +230,7 @@ class DataFetcher:
         else:
             chat_completion = client.chat.completions.create(
                 model=llm_model,
-                temperature=config.temperature,
+                temperature=temperature,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},

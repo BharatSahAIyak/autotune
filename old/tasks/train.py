@@ -6,7 +6,7 @@ import shutil
 from datasets import load_dataset
 from huggingface_hub import HfApi, login
 
-from utils import CeleryProgressCallback, get_task_class
+from old.utils import CeleryProgressCallback, get_task_class
 
 
 def train_model(celery, req, api_key):

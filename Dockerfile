@@ -6,6 +6,8 @@ RUN pip install poetry==1.6.0 && poetry config virtualenvs.create false
 
 COPY pyproject.toml poetry.lock ./
 
+RUN apt-get update -qq && apt-get install ffmpeg -y
+
 # RUN poetry install 
 
 COPY . .

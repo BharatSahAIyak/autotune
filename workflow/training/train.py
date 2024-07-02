@@ -42,7 +42,7 @@ def train(self, req_data, user_id, training_task, cached_dataset_id):
                 ml_model.name = model_name
                 ml_model.is_trained_at_autotune = True
                 ml_model.is_locally_cached = True
-                ml_model.uploaded_at = timezone.now()
+                ml_model.last_trained = timezone.now()
                 ml_model.latest_commit_hash = meta.get("latest_commit_hash")
                 ml_model.huggingface_id = huggingface_id
                 ml_model.save()
@@ -55,7 +55,7 @@ def train(self, req_data, user_id, training_task, cached_dataset_id):
                 name=model_name,
                 is_trained_at_autotune=True,
                 is_locally_cached=True,
-                uploaded_at=timezone.now(),
+                last_trained=timezone.now(),
                 latest_commit_hash=meta.get("latest_commit_hash"),
                 huggingface_id=huggingface_id,
             )
@@ -63,7 +63,7 @@ def train(self, req_data, user_id, training_task, cached_dataset_id):
         user = User.objects.get(user_id=user_id)
 
         TrainingMetadata.objects.create(
-            model=ml_model, logs=meta["logs"], metrics=meta["metrics"], user=user
+            model=ml_model, logs=meta["logs"], metrics=meta["metrics"]
         )
         logger.info("Created TrainingMetadata")
     except Exception as e:
@@ -137,7 +137,7 @@ def upload_cache(cached_dataset_id, training_task, dataset):
 
     task_mapping = get_task_mapping(training_task)
     additional_fields = list(task_mapping.keys())
-    fieldNames = ["id", "file"]
+    fieldNames = ["record_id", "file"]
     fieldNames.extend(additional_fields)
     df = read_frame(cachedDataEntries, fieldnames=fieldNames)
 

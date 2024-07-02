@@ -35,7 +35,7 @@ class TextClassification(Tasks):
             self.model_name, num_labels=num_labels
         )
         self.Trainer = partial(
-            self.Trainer,
+            Trainer,
             model=self.model,
             train_dataset=self.tokenized_dataset["train"],
             eval_dataset=self.tokenized_dataset["test"],

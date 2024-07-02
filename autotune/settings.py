@@ -31,7 +31,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv("DEBUG")
+DEBUG = True
 
 # ALLOWED_HOSTS = []
 
@@ -70,6 +70,11 @@ MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY")
 MINIO_SECURE_CONN = os.getenv("MINIO_SECURE_CONN") == "True"
 
 MINIO_BUCKET_NAME = os.getenv("MINIO_BUCKET")
+
+GITHUB_PAT = os.getenv("GITHUB_PAT")
+
+AI_TOOLS_REPO = "BharatSahAIyak/ai-tools"
+AI_TOOLS_REPO_BRANCH = "dev"
 
 # Application definition
 
