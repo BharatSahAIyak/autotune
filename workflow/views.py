@@ -4,6 +4,7 @@ import logging
 from decimal import Decimal, getcontext
 
 import pandas as pd
+from django.core.exceptions import FieldDoesNotExist
 from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
@@ -825,16 +826,55 @@ class DatasetView(UserIDMixin, CreateMLBaseMixin, CacheDatasetMixin, APIView):
         If no Hugging Face dataset is provided, then the dataset generated at autotune is returned, and if no dataset is available,
         HTTP Status No Content is returned.
 
+        If order is provided and no field, then bad request is returned.
+        order- should be either 'asc' or 'desc'
+
         Parameters:
          - workflow_id(UUID): The ID of the workflow for which the dataset is to be fetched.
          - page(int): The page number for the dataset - Optional.
          - page_size(int): The number of records per page - Optional.
          - dataset(str): The Hugging Face dataset to be fetched - Optional.
          - file(str): Specific file name to fetch from the dataset - Optional.
+         - field(str): field on which we want to sort the data - Optional.
+         - order(str): order in which we want to sort the data - Optional.
         """
         page = request.query_params.get("page", 1)
         page_size = request.query_params.get("perPage", 10)
         file = request.query_params.get("file", None)
+        field = request.query_params.get("field", None)
+        order = request.query_params.get("order", None)
+
+        if order and order not in ["asc", "desc"]:
+            return Response(
+                {
+                    "error": "Order should be either 'asc' or 'desc'.",
+                    "workflow_id": request.META.get("workflow_id"),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if order and not field:
+            return Response(
+                {
+                    "error": "Field is required when order is provided.",
+                    "workflow_id": request.META.get("workflow_id"),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if field:
+            # Check if the field is valid for DatasetData model
+            try:
+                DatasetData._meta.get_field(field)
+            except FieldDoesNotExist:
+                allowed_fields = [f.name for f in DatasetData._meta.get_fields()]
+                return Response(
+                    {
+                        "error": f"Invalid field: {field}. Allowed fields are: {', '.join(allowed_fields)}",
+                        "workflow_id": request.META.get("workflow_id"),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         try:
             page = int(page)
@@ -853,6 +893,12 @@ class DatasetView(UserIDMixin, CreateMLBaseMixin, CacheDatasetMixin, APIView):
 
         if file:
             data = data.filter(file=file)
+
+        if order and field:
+            if order == "asc":
+                data = data.order_by(field)
+            elif order == "desc":
+                data = data.order_by(f"-{field}")
 
         paginated_data, total_count, total_pages = paginate_queryset(
             data, page, page_size
