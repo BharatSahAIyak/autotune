@@ -844,14 +844,17 @@ class DatasetView(UserIDMixin, CreateMLBaseMixin, CacheDatasetMixin, APIView):
         field = request.query_params.get("field", None)
         order = request.query_params.get("order", None)
 
-        if order and order not in ["asc", "desc"]:
-            return Response(
-                {
-                    "error": "Order should be either 'asc' or 'desc'.",
-                    "workflow_id": request.META.get("workflow_id"),
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        # convert order to lowercase
+        if order:
+            order = order.lower()
+            if order not in ["asc", "desc"]:
+                return Response(
+                    {
+                        "error": "Order should be either 'asc' or 'desc'.",
+                        "workflow_id": request.META.get("workflow_id"),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         if order and not field:
             return Response(
