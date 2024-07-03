@@ -20,6 +20,7 @@ class TextClassification(Tasks):
         self.metrics = evaluate.load("f1")
         self.le = LabelEncoder()
         self.label2id = None
+        self.id2label = None
         if "label2id" in args and len(args["label2id"]) != 0:
             self.label2id = args["label2id"]
 
@@ -30,9 +31,18 @@ class TextClassification(Tasks):
         return self.dataset
 
     def _load_model(self):
-        num_labels = len(self.dataset["train"].unique("class"))
+        num_labels = len(self.id2label)
+        print(
+            f"Number of labels: {self.dataset['test'].unique('class')} {self.dataset['train'].unique('class')}"
+        )
+        # assert self.dataset["test"].unique("class") == self.dataset["train"].unique(
+        #     "class"
+        # ), "Train and Test dataset must have the same number of classes"
         self.model = AutoModelForSequenceClassification.from_pretrained(
-            self.model_name, num_labels=num_labels
+            self.model_name,
+            num_labels=num_labels,
+            id2label=self.id2label,
+            label2id=self.label2id,
         )
         self.Trainer = partial(
             Trainer,
@@ -66,6 +76,11 @@ class TextClassification(Tasks):
         )
 
         self.data_collator = DataCollatorWithPadding(tokenizer=self.tokenizer)
+        if self.label2id is None:
+            self.label2id = dict(
+                zip(self.le.classes_, map(str, self.le.transform(self.le.classes_)))
+            )
+        self.id2label = {v: k for k, v in self.label2id.items()}
 
     def __preprocess_function(self, examples):
         return self.tokenizer(examples["text"], truncation=True, padding=True)
