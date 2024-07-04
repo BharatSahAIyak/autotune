@@ -33,11 +33,11 @@ class TextClassification(Tasks):
     def _load_model(self):
         num_labels = len(self.id2label)
         print(
-            f"Number of labels: {self.dataset['test'].unique('class')} {self.dataset['train'].unique('class')}"
+            f"Number of labels: {sorted(self.dataset['test'].unique('class'))} {sorted(self.dataset['train'].unique('class'))}"
         )
-        # assert self.dataset["test"].unique("class") == self.dataset["train"].unique(
-        #     "class"
-        # ), "Train and Test dataset must have the same number of classes"
+        assert sorted(self.dataset["test"].unique("class")) == sorted(
+            self.dataset["train"].unique("class")
+        ), "Train and Test dataset must have the same number of classes"
         self.model = AutoModelForSequenceClassification.from_pretrained(
             self.model_name,
             num_labels=num_labels,
