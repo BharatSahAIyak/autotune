@@ -98,7 +98,9 @@ def process_task(
     repo_name = re.sub(r"\s+", "_", repo_name)
     repo_id = f"{username}/{repo_name}"
 
-    dataset_info = upload_datasets_to_hf(task_id, workflow.split, repo_id)
+    dataset_info = upload_datasets_to_hf(
+        task_id, workflow.split, repo_id, workflow.total_examples
+    )
     dataset = Dataset.objects.create(
         huggingface_id=repo_id,
         uploaded_at=dataset_info["uploaded_at"],
@@ -194,7 +196,7 @@ class GenerateMultiplePrompts:
         self.workflow.save()
 
 
-def upload_datasets_to_hf(task_id, split, repo_id):
+def upload_datasets_to_hf(task_id, split, repo_id, total_examples):
     hf_api = HfApi(token=settings.HUGGING_FACE_TOKEN)
 
     repo_url = hf_api.create_repo(
@@ -206,6 +208,7 @@ def upload_datasets_to_hf(task_id, split, repo_id):
     logger.info(f"Created repo: {repo_url}")
     examples = Examples.objects.filter(task_id=task_id)
     data = []
+    examples = examples[:total_examples]
     for example in examples:
         pairs = {}
         pairs["example_id"] = str(example.example_id)

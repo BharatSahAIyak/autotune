@@ -204,7 +204,7 @@ class IterateWorkflowView(UserIDMixin, APIView):
                 "workflow_cost": f"${workflow.cost}",
                 "iteration_cost": f"${iteration_cost}",
                 "estimated_dataset_cost": f"${workflow.estimated_dataset_cost}",
-                "data": fetcher.examples,
+                "data": fetcher.examples[:total_examples],
             }
         )
 
