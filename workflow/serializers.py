@@ -233,7 +233,13 @@ class ModelDataSerializer(serializers.Serializer):
         max_length=255, help_text="Path where the trained model will be saved."
     )
     task_type = serializers.ChoiceField(
-        choices=["text_classification", "seq2seq", "embedding", "ner"],
+        choices=[
+            "text_classification",
+            "seq2seq",
+            "embedding",
+            "ner",
+            "whisper_finetuning",
+        ],
         help_text="Type of the training task.",
     )
     version = serializers.CharField(
