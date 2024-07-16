@@ -169,6 +169,11 @@ class CacheDatasetMixin:
                 ).first()
                 workflow_id = workflow.workflow_id
 
+                if task_type == "whisper_finetuning":
+                    request.META["workflow_id"] = workflow_id
+                    response = super().dispatch(request, *args, **kwargs)
+                    return response
+
                 huggingface_id, dataset_name = dataset.split("/")
                 dataset_object = Dataset.objects.filter(
                     type=task_type,
