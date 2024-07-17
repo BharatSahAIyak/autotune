@@ -210,7 +210,7 @@ def get_task_config(task=None):
         "text_classification": {
             "model": "BERT",
             "task": "text_classification",
-            "labelStudioElement": {
+            "label_studio_element": {
                 "name": "Text Classification",
                 "config": {
                     "choices": [
@@ -224,12 +224,25 @@ def get_task_config(task=None):
                     ]
                 },
             },
-            "telemetryDataField": {"input": "query", "output": None},
+            "telemetry_data_field": {"input": "query", "output": None},
+            "model_save_path": "SamagraDataGov/e2e-test",
+            "dataset_path": "SamagraDataGov/akai_text_01",
+            "system_prompt": """The classifier model that you're training is a BERT classifier with the following classes and class descriptions : 
+                                agricultural_scheme: The farmer query is about schemes in Odisha
+                                agriculture: General agri queries
+                                pest: The farmer query is about pests
+                                seed: The farmer query is about seed varieties
+                                weather : The farmer query is asking about the weather for a district /place e.g. : 'What's the weather forecast for Sundargarh?'
+                                price : The farmer query is asking about the price of some crop e.g. 'Price for paddy'
+                                non_agri : The farmer query is just some salutation or unrelated to agri""",
+            "user_prompt_template": """You have been given a sentence "{{sentence}}" which should be classified to {{target_class}}. Can you create 10 more examples of sentences extremely similar to "{{sentence}}" all of which should be classifed to {{target_class}}. Make sure they are not sentences which can be classified to other classes like [{{classes_other_than_target}}]
+            """,
+            "schema_example": {"sentence": "string", "label": "string"},
         },
         "ner": {
             "model": "distilbert-finetuned",
             "task": "NER",
-            "labelStudioElement": {
+            "label_studio_element": {
                 "name": "Named Entity Recognition",
                 "config": {
                     "labels": [
@@ -243,12 +256,17 @@ def get_task_config(task=None):
                     ]
                 },
             },
-            "telemetryDataField": {"input": "query", "output": "NER"},
+            "telemetry_data_field": {"input": "query", "output": "NER"},
+            "model_save_path": "",
+            "dataset_path": "",
+            "system_prompt": "sample system prompt",
+            "user_prompt_template": "sample user prompt",
+            "schema_example": {"sentence": "string", "label": "string"},
         },
         "neural_coreference": {
             "model": "FCoref",
             "task": "Neural Coreference",
-            "labelStudioElement": {
+            "label_studio_element": {
                 "name": "Translation",
                 "config": {
                     "leftHeader": "Read the previous conversation",
@@ -257,7 +275,44 @@ def get_task_config(task=None):
                     "rightTextAreaName": "Coreferenced text",
                 },
             },
-            "telemetryDataField": {"input": "query", "output": "coreferencedText"},
+            "telemetry_data_field": {"input": "query", "output": "coreferencedText"},
+            "model_save_path": "",
+            "dataset_path": "",
+            "system_prompt": "sample system prompt",
+            "user_prompt_template": "sample user prompt",
+            "schema_example": {"sentence": "string", "label": "string"},
+        },
+        "whisper_finetuning": {
+            "model": "whisper",
+            "task": "whisper_finetuning",
+            "label_studio_element": {
+                "name": "Text Classification",
+                "config": {
+                    "choices": [
+                        "pest",
+                        "agricultural_scheme",
+                        "agriculture",
+                        "seed",
+                        "weather",
+                        "price",
+                        "non_agri",
+                    ]
+                },
+            },
+            "telemetry_data_field": {"input": "query", "output": None},
+            "model_save_path": "smokeyScraper/op_whisper",
+            "dataset_path": "smokeyScraper/test_audio",
+            "system_prompt": """The classifier model that you're training is a BERT classifier with the following classes and class descriptions : 
+                                agricultural_scheme: The farmer query is about schemes in Odisha
+                                agriculture: General agri queries
+                                pest: The farmer query is about pests
+                                seed: The farmer query is about seed varieties
+                                weather : The farmer query is asking about the weather for a district /place e.g. : 'What's the weather forecast for Sundargarh?'
+                                price : The farmer query is asking about the price of some crop e.g. 'Price for paddy'
+                                non_agri : The farmer query is just some salutation or unrelated to agri""",
+            "user_prompt_template": """You have been given a sentence "{{sentence}}" which should be classified to {{target_class}}. Can you create 10 more examples of sentences extremely similar to "{{sentence}}" all of which should be classifed to {{target_class}}. Make sure they are not sentences which can be classified to other classes like [{{classes_other_than_target}}]
+            """,
+            "schema_example": {"sentence": "string", "label": "string"},
         },
     }
 
@@ -279,7 +334,9 @@ def get_task_config(task=None):
 # task:{input_column in db: dataset_column,output_column in db: dataset_column}
 def get_task_mapping(task):
     mapping = {
-        "text_classification": {"input_string": "text", "output_string": "class"}
+        "text_classification": {"input_string": "text", "output_string": "class"},
+        "ner": {"input_string": "Input", "output_string": "Output"},
+        "whisper_finetuning": {"input_string": "audio", "output_string": "sentence"},
     }
     if task in mapping:
         return mapping[task]

@@ -7,6 +7,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.http import JsonResponse
 from django.utils.decorators import method_decorator
+from django.utils.deprecation import MiddlewareMixin
 from django.views.decorators.csrf import csrf_exempt
 from huggingface_hub import HfApi
 from rest_framework import status
@@ -15,37 +16,10 @@ from rest_framework.response import Response
 
 from workflow.models import User
 
-from .models import Dataset, DatasetData, Workflows
-from .utils import get_task_mapping
+from .models import Dataset, DatasetData, MLModel, MLModelConfig, Workflows
+from .utils import create_pydantic_model, get_task_config, get_task_mapping
 
 logger = logging.getLogger(__name__)
-
-
-class LoggingMixin:
-    """
-    Provides full logging of requests
-    """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.logger = logging.getLogger("django.request")
-
-    def initial(self, request, *args, **kwargs):
-        try:
-            extra = {
-                "request": request.data,
-                "method": request.method,
-                "endpoint": request.path,
-                "user": request.user.username,
-                "ip_address": request.META.get("REMOTE_ADDR"),
-                "user_agent": request.META.get("HTTP_USER_AGENT"),
-                "headers": dict(request.headers),
-            }
-            self.logger.info(f"Request received: {extra}")
-        except Exception:
-            self.logger.exception("Error logging request data")
-
-        super().initial(request, *args, **kwargs)
 
 
 class UserIDMixin:
@@ -97,31 +71,86 @@ def is_valid_uuid(uuid_to_test, version=4):
         return False
 
 
+class CreateMLBaseMixin:
+    def dispatch(self, request, *args, **kwargs):
+        """
+        Mixin which will check the ML models for a user and create a new one if not found.
+        """
+        user_id = request.META["user"].user_id
+        task_configs = get_task_config()
+        for task_config in task_configs:
+            _, model_string = create_pydantic_model(
+                task_config.get("schema_example"),
+            )
+
+            ml_model_config, _ = MLModelConfig.objects.get_or_create(
+                model_save_path=task_config.get("model_save_path"),
+                dataset_path=task_config.get("dataset_path"),
+                type=task_config.get("model"),
+                system_prompt=task_config.get("system_prompt"),
+                user_prompt_template=task_config.get("user_prompt_template"),
+                schema_example=task_config.get("schema_example"),
+                temperature=1,
+                model_string=model_string,
+            )
+
+            ml_model, created = MLModel.objects.get_or_create(
+                user_id=user_id,
+                config=ml_model_config,
+                task=task_config.get("task"),
+                name=task_config.get("model"),
+                huggingface_id=task_config.get("model_save_path"),
+                is_locally_cached=False,
+                is_trained_at_autotune=False,
+                label_studio_element=task_config.get("label_studio_element"),
+                telemetry_data_field=task_config.get("telemetry_data_field"),
+            )
+
+            if created:
+                self.create_workflow(ml_model, task_config)
+
+        return super().dispatch(request, *args, **kwargs)
+
+    def create_workflow(self, ml_model: MLModel, task_config):
+        workflow_config = None
+        workflow_name = f"{ml_model.name} Workflow"
+        Workflows.objects.create(
+            workflow_name=workflow_name,
+            workflow_config=workflow_config,
+            user=ml_model.user,
+            model=ml_model,
+            status=Workflows.WorkflowStatus.SETUP,
+            type=Workflows.WorkflowType.TRAINING,
+        )
+        print(f"Created new workflow '{workflow_name}' for model ID {ml_model.id}")
+
+
+import json
+
+
 class CacheDatasetMixin:
     @method_decorator(csrf_exempt)
     def dispatch(self, request, *args, **kwargs):
         """
         Mixin for all endpoints which deal with a dataset. it has to be preceded by a datasetId in the request endpoint.
         This mixin will check if the dataset is already in the cache, if not it will download the dataset from huggingface and cache it.
-        Needs to either have a dataset associated with the workflow_id in autotune or provide a dataset and type in the request.
         """
 
         try:
-            user_id = request.META["user"].user_id
+            user: User = request.META["user"]
+            user_id = user.user_id
             dataset = None
-
-            workflows = Workflows.objects.filter(user_id=user_id)
 
             if request.method == "GET":
                 dataset = request.GET.get("dataset")
                 task_type = request.GET.get("task_type")
             elif request.method == "POST":
-                dataset = request.POST.get("dataset")
-                task_type = request.POST.get("task_type")
+                request_data = json.loads(request.body)
+                dataset = request_data.get("dataset")
+                task_type = request_data.get("task_type")
 
             logger.info(f"recieved dataset {dataset} and task_type {task_type}")
 
-            workflow_id = None
             created = False
 
             task_mapping = get_task_mapping(task_type)
@@ -129,36 +158,22 @@ class CacheDatasetMixin:
             if not task_mapping:
                 raise ValueError("Please give a valid task type.")
 
-            for workflow in workflows:
-                print("in the for loop")
-                print(workflow)
-                test_dataset = Dataset.objects.filter(
-                    workflow_id=workflow.workflow_id
-                ).first()
-                if test_dataset and test_dataset.type == task_type:
-                    workflow_id = workflow.workflow_id
-                    logger.info(
-                        "found an existing workflow with this task for the given user"
-                    )
-                    break
-
-            print(workflow_id)
-
-            # Create workflow for a user for given task if no workflow w a dataset of given task exists
-            if workflow_id is None:
-                created_workflow = Workflows.objects.create(
-                    user_id=user_id,
-                    type="Training",
-                    workflow_name=f"training_{task_type}",
-                )
-                workflow_id = created_workflow.workflow_id
-                created = True
-                logger.info(
-                    f"created a workflow for the task with workflow_id {workflow_id}"
-                )
+            workflow_id = None
 
             # When user gives a HF dataset to use for caching the data
             if dataset:
+                workflow = Workflows.objects.filter(
+                    user__user_id=user_id,
+                    model__task=task_type,
+                    model__config__dataset_path=dataset,
+                ).first()
+                workflow_id = workflow.workflow_id
+
+                if task_type == "whisper_finetuning":
+                    request.META["workflow_id"] = workflow_id
+                    response = super().dispatch(request, *args, **kwargs)
+                    return response
+
                 huggingface_id, dataset_name = dataset.split("/")
                 dataset_object = Dataset.objects.filter(
                     type=task_type,
@@ -177,10 +192,15 @@ class CacheDatasetMixin:
 
                 # data not in cache
                 if not dataset_object.is_locally_cached:
-                    self.cache_dataset(dataset_object, task_mapping, dataset)
+                    self.cache_dataset(dataset_object, task_mapping, dataset, user)
 
             # Dataset generated at autotune and user wants to use that.
             elif not created:
+                workflow = Workflows.objects.filter(
+                    user__user_id=user_id,
+                    model__task=task_type,
+                ).first()
+                workflow_id = workflow.workflow_id
                 dataset_object = Dataset.objects.filter(workflow_id=workflow_id).first()
                 if not dataset_object:
                     raise ValueError("No dataset associated with the workflow.")
@@ -190,6 +210,7 @@ class CacheDatasetMixin:
                         dataset_object,
                         task_mapping,
                         f"{dataset_object.huggingface_id}/{dataset_object.name}",
+                        user,
                     )
 
             else:
@@ -221,7 +242,7 @@ class CacheDatasetMixin:
         response.renderer_context = {}
         return response
 
-    def cache_dataset(self, dataset_object, task_mapping, dataset):
+    def cache_dataset(self, dataset_object, task_mapping, dataset, user):
         logger.info("didnt find the dataset in the cache, creating a new cache")
         hf_api = HfApi(token=settings.HUGGING_FACE_TOKEN)
 
@@ -256,21 +277,22 @@ class CacheDatasetMixin:
                         f"Column '{csv_column}' does not exist in the dataset for {csv_file.split('/')[-1]}"
                     )
 
-            if "id" in df.columns:
+            if "record_id" in df.columns:
                 # Check and replace non-UUID values with UUIDs
-                df["id"] = df["id"].apply(
+                df["record_id"] = df["record_id"].apply(
                     lambda x: (str(uuid.uuid4()) if not is_valid_uuid(x) else x)
                 )
             else:
-                # Add an 'id' column with new UUIDs
-                df["id"] = [str(uuid.uuid4()) for _ in range(len(df))]
+                # Add an 'record_id' column with new UUIDs
+                df["record_id"] = [str(uuid.uuid4()) for _ in range(len(df))]
 
             filename = csv_file.split("/")[-1]
             for _, row in df.iterrows():
                 row_data = DatasetData(
-                    id=uuid.UUID(row["id"]),
+                    record_id=uuid.UUID(row["record_id"]),
                     dataset=dataset_object,
                     file=filename,
+                    user=user,
                 )
 
                 # get the appropriate columns and their mapping.

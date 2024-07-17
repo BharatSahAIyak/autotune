@@ -5,6 +5,7 @@ from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+from django.db.models import UniqueConstraint
 from django.utils.translation import gettext_lazy as _
 
 
@@ -66,9 +67,7 @@ class Dataset(models.Model):
     huggingface_id = models.CharField(null=True, blank=True)
     uploaded_at = models.DateTimeField(null=True, blank=True)
     is_generated_at_autotune = models.BooleanField(default=False)
-    latest_commit_hash = models.CharField(
-        null=True, blank=True
-    )  # not a uuid on huggingface
+    latest_commit_hash = models.CharField(null=True, blank=True)  # not a uuid on HF
     name = models.CharField(max_length=255)
     is_locally_cached = models.BooleanField(default=False)
     workflow = models.ForeignKey(
@@ -79,13 +78,27 @@ class Dataset(models.Model):
     )
 
 
+class MLModelConfig(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    model_save_path = models.TextField()
+    dataset_path = models.TextField()
+    type = models.CharField(max_length=255)
+    system_prompt = models.TextField()
+    user_prompt_template = models.TextField()
+    schema_example = models.JSONField(default=dict)
+    temperature = models.IntegerField(
+        default=1, validators=[MinValueValidator(0), MaxValueValidator(2)]
+    )
+    model_string = models.TextField()
+
+
 class MLModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
     name = models.CharField(max_length=255)
     huggingface_id = models.CharField(null=True, blank=True)
-    uploaded_at = models.DateTimeField(null=True, blank=True)
+    last_trained = models.DateTimeField(null=True, blank=True)
     latest_commit_hash = models.UUIDField(null=True, blank=True)
     is_trained_at_autotune = models.BooleanField(default=False)
     is_locally_cached = models.BooleanField(default=False)
@@ -96,9 +109,27 @@ class MLModel(models.Model):
         null=True,
         blank=True,
     )
-    label_studio_component = models.TextField(null=True, blank=True)
-    rendering_config = models.TextField(null=True, blank=True)
-    label_studio_comp = models.TextField(null=True, blank=True)
+    label_studio_element = models.JSONField(null=True, blank=True)
+    telemetry_data_field = models.JSONField(null=True, blank=True)
+    deployed_at = models.DateTimeField(null=True, blank=True)
+    config = models.ForeignKey(
+        MLModelConfig,
+        on_delete=models.CASCADE,
+        related_name="models",
+        null=True,
+        blank=True,
+    )
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="ml_model")
+    task = models.CharField(max_length=255, null=True, blank=True)
+
+
+class TrainingMetadata(models.Model):
+    trained_at = models.DateTimeField(auto_now_add=True)
+    model = models.ForeignKey(
+        MLModel, on_delete=models.CASCADE, related_name="metadata"
+    )
+    logs = models.JSONField(default=dict)
+    metrics = models.JSONField(default=dict)
 
 
 class WorkflowConfig(models.Model):
@@ -190,18 +221,17 @@ class DatasetData(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    record_id = models.UUIDField(default=uuid.uuid4, editable=False)
     file = models.CharField(max_length=255, null=True, blank=True)
     input_string = models.TextField(blank=True, null=True)
     output_string = models.TextField(blank=True, null=True)
     input_json = models.JSONField(blank=True, null=True)
     output_json = models.JSONField(blank=True, null=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="user")
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE, related_name="data")
 
-    def save(self, *args, **kwargs):
-        # if self.dataset.type == Dataset.DatasetType.ASR:
-        # We can define the fields needed for different dataset types here
-
-        super().save(*args, **kwargs)
+    class Meta:
+        UniqueConstraint(fields=["room", "date"], name="unique_booking")
 
 
 class Prompt(models.Model):
@@ -251,16 +281,6 @@ class Task(models.Model):
     )
     generated_samples = models.IntegerField(default=0)
     total_samples = models.IntegerField(default=0)
-
-
-class TrainingMetadata(models.Model):
-    trained_at = models.DateTimeField(auto_now_add=True)
-    model = models.ForeignKey(
-        MLModel, on_delete=models.CASCADE, related_name="metadata"
-    )
-    logs = models.JSONField(default=dict)
-    metrics = models.JSONField(default=dict)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="training")
 
 
 class Log(models.Model):

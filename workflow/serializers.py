@@ -1,6 +1,5 @@
 from jsonschema import Validator
 from rest_framework import serializers
-from rest_framework.exceptions import ValidationError
 
 from .models import (
     Dataset,
@@ -234,7 +233,13 @@ class ModelDataSerializer(serializers.Serializer):
         max_length=255, help_text="Path where the trained model will be saved."
     )
     task_type = serializers.ChoiceField(
-        choices=["text_classification", "seq2seq", "embedding"],
+        choices=[
+            "text_classification",
+            "seq2seq",
+            "embedding",
+            "ner",
+            "whisper_finetuning",
+        ],
         help_text="Type of the training task.",
     )
     version = serializers.CharField(
@@ -287,11 +292,12 @@ class MLModelSerializer(serializers.ModelSerializer):
                 "help_text": "The date and time when the model was last updated."
             },
             "id": {"help_text": "The unique identifier of the model."},
+            "task": {"help_text": "The task for which the model was trained."},
             "name": {"help_text": "The name of the model."},
             "huggingface_id": {
                 "help_text": "The ID of the model on Huggingface, if available."
             },
-            "uploaded_at": {
+            "last_trained": {
                 "help_text": "The date and time when the model was uploaded.",
                 "required": False,
             },
@@ -336,7 +342,7 @@ class DatasetDataSerializer(serializers.ModelSerializer):
         fields = [
             "created_at",
             "updated_at",
-            "id",
+            "record_id",
             "file",
             "input_string",
             "output_string",
@@ -349,7 +355,7 @@ class DatasetDataSerializer(serializers.ModelSerializer):
             "updated_at": {
                 "help_text": "The date and time when the data was last updated."
             },
-            "id": {"help_text": "The unique identifier of the data entry."},
+            "record_id": {"help_text": "The unique identifier of the data entry."},
             "file": {
                 "help_text": "The name of the file from which the data was fetched."
             },
@@ -400,4 +406,14 @@ class AudioDatasetSerializer(serializers.Serializer):
         if not save_path:
             raise serializers.ValidationError("save_path must be provided")
 
+        return data
+
+
+class ModelDeploySerializer(serializers.Serializer):
+    service_names = serializers.CharField(max_length=255, required=True)
+    finetuned_model = serializers.CharField(max_length=255, required=True)
+    deployment_model = serializers.CharField(max_length=255, required=True)
+    gh_workflow = serializers.CharField(max_length=255, required=True)
+
+    def validate(self, data):
         return data

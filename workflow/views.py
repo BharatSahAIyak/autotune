@@ -2,10 +2,9 @@ import ast
 import io
 import logging
 from decimal import Decimal, getcontext
-from typing import List
 
 import pandas as pd
-from django.conf import settings
+from django.core.exceptions import FieldDoesNotExist
 from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
@@ -14,25 +13,26 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
-from huggingface_hub import HfApi
 from rest_framework import status
 from rest_framework.decorators import api_view
-from rest_framework.exceptions import NotFound
 from rest_framework.generics import ListAPIView, UpdateAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from workflow.generator.dataFetcher import DataFetcher
 from workflow.generator.generate import process_task
+from workflow.health import HealthCheck
+from workflow.training.deploy import deploy_model
 from workflow.training.train import train
 
 from .align_tasks import align_task
-from .mixins import CacheDatasetMixin, UserIDMixin
+from .mixins import CacheDatasetMixin, CreateMLBaseMixin, UserIDMixin
 from .models import (
     Dataset,
     DatasetData,
     Examples,
     MLModel,
+    MLModelConfig,
     Prompt,
     Task,
     User,
@@ -45,6 +45,7 @@ from .serializers import (
     ExampleSerializer,
     MLModelSerializer,
     ModelDataSerializer,
+    ModelDeploySerializer,
     PromptSerializer,
     UserSerializer,
     WorkflowConfigSerializer,
@@ -203,7 +204,7 @@ class IterateWorkflowView(UserIDMixin, APIView):
                 "workflow_cost": f"${workflow.cost}",
                 "iteration_cost": f"${iteration_cost}",
                 "estimated_dataset_cost": f"${workflow.estimated_dataset_cost}",
-                "data": fetcher.examples,
+                "data": fetcher.examples[:total_examples],
             }
         )
 
@@ -714,7 +715,7 @@ def add_user(request):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class TrainModelView(UserIDMixin, CacheDatasetMixin, APIView):
+class TrainModelView(UserIDMixin, CreateMLBaseMixin, CacheDatasetMixin, APIView):
 
     @swagger_auto_schema(
         operation_description="Start training a model with the provided data.",
@@ -756,10 +757,11 @@ class TrainModelView(UserIDMixin, CacheDatasetMixin, APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class MLModelListView(APIView):
+class MLModelListView(UserIDMixin, CreateMLBaseMixin, APIView):
 
     def get(self, request, format=None):
-        models = MLModel.objects.all()
+        user_id = request.META["user"].user_id
+        models = MLModel.objects.filter(user_id=user_id)
         serializer = MLModelSerializer(models, many=True)
         return Response(serializer.data)
 
@@ -778,7 +780,7 @@ class MLModelDetailView(APIView):
             return Response(status=status.HTTP_404_NOT_FOUND)
 
 
-class DatasetView(UserIDMixin, CacheDatasetMixin, APIView):
+class DatasetView(UserIDMixin, CreateMLBaseMixin, CacheDatasetMixin, APIView):
 
     @swagger_auto_schema(
         operation_description="Fetches CSV files from a Hugging Face dataset repository, with pagination and optional file-specific fetching.",
@@ -824,16 +826,58 @@ class DatasetView(UserIDMixin, CacheDatasetMixin, APIView):
         If no Hugging Face dataset is provided, then the dataset generated at autotune is returned, and if no dataset is available,
         HTTP Status No Content is returned.
 
+        If order is provided and no field, then bad request is returned.
+        order- should be either 'asc' or 'desc'
+
         Parameters:
          - workflow_id(UUID): The ID of the workflow for which the dataset is to be fetched.
          - page(int): The page number for the dataset - Optional.
          - page_size(int): The number of records per page - Optional.
          - dataset(str): The Hugging Face dataset to be fetched - Optional.
          - file(str): Specific file name to fetch from the dataset - Optional.
+         - field(str): field on which we want to sort the data - Optional.
+         - order(str): order in which we want to sort the data - Optional.
         """
         page = request.query_params.get("page", 1)
         page_size = request.query_params.get("perPage", 10)
         file = request.query_params.get("file", None)
+        field = request.query_params.get("field", None)
+        order = request.query_params.get("order", None)
+
+        # convert order to lowercase
+        if order:
+            order = order.lower()
+            if order not in ["asc", "desc"]:
+                return Response(
+                    {
+                        "error": "Order should be either 'asc' or 'desc'.",
+                        "workflow_id": request.META.get("workflow_id"),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        if order and not field:
+            return Response(
+                {
+                    "error": "Field is required when order is provided.",
+                    "workflow_id": request.META.get("workflow_id"),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if field:
+            # Check if the field is valid for DatasetData model
+            try:
+                DatasetData._meta.get_field(field)
+            except FieldDoesNotExist:
+                allowed_fields = [f.name for f in DatasetData._meta.get_fields()]
+                return Response(
+                    {
+                        "error": f"Invalid field: {field}. Allowed fields are: {', '.join(allowed_fields)}",
+                        "workflow_id": request.META.get("workflow_id"),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         try:
             page = int(page)
@@ -847,11 +891,17 @@ class DatasetView(UserIDMixin, CacheDatasetMixin, APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        cached_dataset_id = request.META.get("cached_dataset_id", None)
+        cached_dataset_id = request.META.get("cached_dataset_id")
         data = DatasetData.objects.filter(dataset_id=cached_dataset_id)
 
         if file:
             data = data.filter(file=file)
+
+        if order and field:
+            if order == "asc":
+                data = data.order_by(field)
+            elif order == "desc":
+                data = data.order_by(f"-{field}")
 
         paginated_data, total_count, total_pages = paginate_queryset(
             data, page, page_size
@@ -927,46 +977,49 @@ class DatasetView(UserIDMixin, CacheDatasetMixin, APIView):
         to HF just before training is triggered
 
         Parameters:
-         - workflow_id(UUID): The ID of the workflow for which the dataset is to be fetched.
+        - workflow_id(UUID): The ID of the workflow for which the dataset is to be fetched.
         Body:
-         - dataset(str): The Hugging Face dataset. If this is not provided, then fall back to the workflow dataset- Optional.
+        - dataset(str): The Hugging Face dataset. If this is not provided, then fall back to the workflow dataset- Optional.
         """
-        input = request.data.get("input", None)
-        output = request.data.get("output", None)
+        data = request.data.get("data", None)
+        user = request.META["user"]
 
-        if not input:
+        # each value of data should be a JSON with input and output
+        if not data:
             return Response(
-                {"error": "Input is required."},
+                {"error": "Data is required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if not output:
-            return Response(
-                {
-                    "error": "Output is required.",
-                    "workflow_id": request.META.get("workflow_id"),
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        for d in data:
+            if not d.get("input") or not d.get("output"):
+                return Response(
+                    {"error": "Input and Output are required."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         # will be a valid dataset id, handled in the mixin
-        cached_dataset_id = request.META.get("cached_dataset_id", None)
+        cached_dataset_id = request.META.get("cached_dataset_id")
         dataset_object = Dataset.objects.get(id=cached_dataset_id)
         task = dataset_object.type
         task_mapping = get_task_mapping(task)
         keys = list(task_mapping.keys())
 
-        record_data = DatasetData(dataset=dataset_object, file="train.csv")
-
-        setattr(record_data, keys[0], input)
-        setattr(record_data, keys[1], output)
-
-        record_data.save()
+        dataset_data_to_create = []
+        for d in data:
+            record_data = DatasetData(
+                dataset=dataset_object, file="train.csv", user=user
+            )
+            setattr(record_data, keys[0], d.get("input"))
+            setattr(record_data, keys[1], d.get("output"))
+            dataset_data_to_create.append(record_data)
+        DatasetData.objects.bulk_create(dataset_data_to_create)
 
         return Response(
             {
                 "message": "Dataset data saved successfully.",
                 "workflow_id": request.META.get("workflow_id"),
+                "dataset_id": cached_dataset_id,
             },
             status=status.HTTP_201_CREATED,
         )
@@ -1011,11 +1064,32 @@ class ConfigView(APIView):
                 return Response({"data": task_mapping}, status=status.HTTP_200_OK)
             else:
                 return Response(
-                    {"error": "Task not found"}, status=status.HTTP_404_NOT_FOUND
+                    {"error": "Task not found"}, status=status.HTTP_400_BAD_REQUEST
                 )
 
 
-class ForceAlignmentView(APIView, CacheDatasetMixin, UserIDMixin):
+class ModelDeployView(UserIDMixin, APIView):
+    def post(self, request):
+        serializer = ModelDeploySerializer(data=request.data)
+
+        if serializer.is_valid():
+            data = serializer.data
+
+            logger.info(f"data: {serializer.data}")
+            logger.info(f"Deploying model with data: {data['finetuned_model']}")
+
+            deploy_model.apply_async(
+                args=[data],
+            )
+
+            return Response(
+                status=status.HTTP_202_ACCEPTED,
+            )
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ForceAlignmentView(UserIDMixin, CacheDatasetMixin, APIView):
 
     def post(self, request, *args, **kwargs):
 
@@ -1046,3 +1120,69 @@ class ForceAlignmentView(APIView, CacheDatasetMixin, UserIDMixin):
             )
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class HealthCheckView(APIView):
+
+    def get(self, request):
+
+        health_checker = HealthCheck()
+
+        services = [
+            health_checker.openai(),
+            health_checker.redis(),
+            health_checker.celery_workers(),
+            health_checker.postgres(),
+            health_checker.huggingface(),
+            health_checker.minio(),
+        ]
+
+        all_services_healthy = all(
+            service["status"]["isAvailable"] for service in services
+        )
+        response = {
+            "status": "ok" if all_services_healthy else "unhealthy",
+            "upstreamServices": services,
+        }
+        return Response(response)
+
+
+class PingCheckView(APIView):
+    def get(self, request):
+        resp = {"status": "ok", "details": {"autotune": {"status": "up"}}}
+        return Response(resp, status=status.HTTP_200_OK)
+
+
+from workflow.generator.generator_model import ModelDataFetcher
+
+
+class ModelIterationView(UserIDMixin, CreateMLBaseMixin, APIView):
+    """
+    Custom implementation of the iteration logic suited for samples during model training
+    """
+
+    def post(self, request, *args, **kwargs):
+        user_id = request.META["user"].user_id
+
+        task_type = request.data.get("task_type")
+        dataset = request.data.get("dataset")
+        input = request.data.get("input")
+        output = request.data.get("output")
+
+        model: MLModel = get_object_or_404(
+            MLModel, user_id=user_id, task=task_type, config__dataset_path=dataset
+        )
+
+        model_config: MLModelConfig = model.config
+
+        pydantic_model, _ = create_pydantic_model(model_config.schema_example)
+
+        data_fetcher = ModelDataFetcher(model_config, model, pydantic_model)
+
+        data_fetcher.generate_or_refine(
+            input=input,
+            output=output,
+            task_type=task_type,
+        )
+
+        return Response(data_fetcher.examples)

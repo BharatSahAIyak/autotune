@@ -12,9 +12,8 @@ from huggingface_hub import CommitOperationAdd, HfApi, login
 from transformers import TrainerCallback
 
 from workflow.models import Dataset, DatasetData, MLModel, Task, TrainingMetadata, User
+from .utils import get_task_class
 from workflow.utils import get_task_mapping
-
-from .tasks import get_task_class
 
 logger = get_task_logger(__name__)
 
@@ -43,7 +42,7 @@ def train(self, req_data, user_id, training_task, cached_dataset_id):
                 ml_model.name = model_name
                 ml_model.is_trained_at_autotune = True
                 ml_model.is_locally_cached = True
-                ml_model.uploaded_at = timezone.now()
+                ml_model.last_trained = timezone.now()
                 ml_model.latest_commit_hash = meta.get("latest_commit_hash")
                 ml_model.huggingface_id = huggingface_id
                 ml_model.save()
@@ -56,7 +55,7 @@ def train(self, req_data, user_id, training_task, cached_dataset_id):
                 name=model_name,
                 is_trained_at_autotune=True,
                 is_locally_cached=True,
-                uploaded_at=timezone.now(),
+                last_trained=timezone.now(),
                 latest_commit_hash=meta.get("latest_commit_hash"),
                 huggingface_id=huggingface_id,
             )
@@ -64,7 +63,7 @@ def train(self, req_data, user_id, training_task, cached_dataset_id):
         user = User.objects.get(user_id=user_id)
 
         TrainingMetadata.objects.create(
-            model=ml_model, logs=meta["logs"], metrics=meta["metrics"], user=user
+            model=ml_model, logs=meta["logs"], metrics=meta["metrics"]
         )
         logger.info("Created TrainingMetadata")
     except Exception as e:
@@ -96,32 +95,33 @@ def train_model(celery, req_data, task_id):
 
     trainer.train()
 
-    _, _, metrics = trainer.predict(task.tokenized_dataset["test"])
+    metrics = trainer.evaluate(task.tokenized_dataset["test"])
     json_metrics = json.dumps(metrics)
     json_bytes = json_metrics.encode("utf-8")
     fileObj = io.BytesIO(json_bytes)
 
     meta = {"logs": trainer.state.log_history, "metrics": metrics}
+    logger.info(metrics)
     celery.update_state(state="PUSHING", meta=meta)
 
     api_key = settings.HUGGING_FACE_TOKEN
     login(token=api_key)
     task.push_to_hub(trainer, req_data["save_path"], hf_token=api_key)
 
-    # hfApi = HfApi(endpoint="https://huggingface.co", token=api_key)
-    # upload = hfApi.upload_file(
-    #     path_or_fileobj=fileObj,
-    #     path_in_repo="metrics.json",
-    #     repo_id=req_data["save_path"],
-    #     repo_type="model",
-    # )
+    hfApi = HfApi(endpoint="https://huggingface.co", token=api_key)
+    upload = hfApi.upload_file(
+        path_or_fileobj=fileObj,
+        path_in_repo="metrics.json",
+        repo_id=req_data["save_path"],
+        repo_type="model",
+    )
 
-    # meta["latest_commit_hash"] = upload.commit_url.split("/")[-1]
+    meta["latest_commit_hash"] = upload.commit_url.split("/")[-1]
 
-    if os.path.exists(f"./results_{celery.request.id}"):
-        shutil.rmtree(f"./results_{celery.request.id}")
-    if os.path.exists(f"./logs_{celery.request.id}"):
-        shutil.rmtree(f"./logs_{celery.request.id}")
+    # if os.path.exists(f"./results_{celery.request.id}"):
+    #     shutil.rmtree(f"./results_{celery.request.id}")
+    # if os.path.exists(f"./logs_{celery.request.id}"):
+    #     shutil.rmtree(f"./logs_{celery.request.id}")
 
     logger.info("Training complete")
 
@@ -137,7 +137,7 @@ def upload_cache(cached_dataset_id, training_task, dataset):
 
     task_mapping = get_task_mapping(training_task)
     additional_fields = list(task_mapping.keys())
-    fieldNames = ["id", "file"]
+    fieldNames = ["record_id", "file"]
     fieldNames.extend(additional_fields)
     df = read_frame(cachedDataEntries, fieldnames=fieldNames)
 

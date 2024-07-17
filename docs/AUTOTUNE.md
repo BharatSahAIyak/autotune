@@ -68,3 +68,98 @@ There are two versions of the APIs, with the core functionality accross both the
 - REQUEST:
 
 - RESPONSE:
+
+### GET /health
+
+- REQUEST:
+
+```bash
+curl --location 'localhost:8000/health'
+```
+
+- RESPONSE:
+
+```json
+{
+  "health": "healthy",
+  "upstreamServices": [
+    {
+      "name": "OpenAI API",
+      "type": "external",
+      "impactMessage": "Synthetic data generation will be impacted",
+      "status": {
+        "isAvailable": true
+      },
+      "endpoint": "openai.com",
+      "sla": null
+    },
+    {
+      "name": "Redis",
+      "type": "internal",
+      "impactMessage": "Caching, Data Generation and Model training impacted",
+      "status": {
+        "isAvailable": true
+      },
+      "sla": null
+    },
+    {
+      "name": "Celery Workers",
+      "type": "internal",
+      "impactMessage": "Task processing will be impacted",
+      "status": {
+        "isAvailable": true
+      },
+      "sla": null
+    },
+    {
+      "name": "PostgreSQL",
+      "type": "internal",
+      "impactMessage": "All core functionalities impacted",
+      "status": {
+        "isAvailable": true
+      },
+      "sla": null
+    },
+    {
+      "name": "Hugging Face API",
+      "type": "external",
+      "impactMessage": "All core functionalities of autotune impacted",
+      "status": {
+        "isAvailable": true
+      },
+      "endpoint": "huggingface.co",
+      "sla": null
+    },
+    {
+      "name": "Minio",
+      "type": "internal",
+      "impactMessage": "Mass prompt handling will be impacted, along with download of synthetic data json and csv",
+      "status": {
+        "isAvailable": true
+      },
+      "sla": null
+    }
+  ]
+}
+```
+
+### GET /health/ping
+
+- REQUEST:
+
+```bash
+curl --location 'localhost:8000/health/ping'
+```
+
+- RESPONSE:
+
+```json
+{
+  "status": "ok",
+  "details": {
+    "autotune": {
+      "status": "up"
+    }
+  }
+}
+```
