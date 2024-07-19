@@ -26,12 +26,18 @@ class WhisperFineTuning(Tasks):
 
     def load_dataset(self, dataset_name):
         dataset = load_dataset(dataset_name)
-        if "audio" not in dataset.column_names:
-            dataset = dataset.rename_column(dataset.column_names[0], "audio")
-        if "sentence" not in dataset.column_names:
-            dataset = dataset.rename_column(dataset.column_names[1], "sentence")
-        dataset = dataset.cast_column("audio", Audio(sampling_rate=16000))
-        dataset = dataset["train"].train_test_split(test_size=0.1)
+        train_dataset = dataset["train"]
+        
+        if "audio" not in train_dataset.column_names:
+            audio_column = train_dataset.column_names[0]
+            train_dataset = train_dataset.rename_column(audio_column, "audio")
+
+        if "sentence" not in train_dataset.column_names:
+            sentence_column = train_dataset.column_names[1]
+            train_dataset = train_dataset.rename_column(sentence_column, "sentence")
+        
+        train_dataset = train_dataset.cast_column("audio", Audio(sampling_rate=16000))
+        dataset = train_dataset.train_test_split(test_size=0.1)
         self.train_dataset = dataset["train"]
         self.eval_dataset = dataset["test"]
         self._load_model()
