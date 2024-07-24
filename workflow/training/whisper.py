@@ -23,6 +23,7 @@ class WhisperFineTuning(Tasks):
         self.tokenizer = WhisperTokenizer.from_pretrained(model_name, language=args["language"], task="transcribe")
         self.processor = WhisperProcessor.from_pretrained(model_name, language=args["language"], task="transcribe")
         self.feature_extractor = WhisperFeatureExtractor.from_pretrained(model_name)
+        self.args = args
 
     def load_dataset(self, dataset_name):
         dataset = load_dataset(dataset_name)
@@ -103,16 +104,16 @@ class WhisperFineTuning(Tasks):
         return Seq2SeqTrainingArguments(
             output_dir=f"./results_{req_data['task_id']}",
             num_train_epochs=req_data["epochs"],
-            per_device_train_batch_size=req_data.get("per_device_train_batch_size", 16),
-            per_device_eval_batch_size=req_data.get("per_device_eval_batch_size", 8),
-            warmup_ratio=req_data.get("warmup_ratio", 0.1),
-            gradient_accumulation_steps=req_data.get("gradient_accumulation_steps", 2),
-            learning_rate=req_data.get("learning_rate", 3.75e-5),
+            per_device_train_batch_size=self.args.get("per_device_train_batch_size", 16),
+            per_device_eval_batch_size=self.args.get("per_device_eval_batch_size", 8),
+            warmup_ratio=self.args.get("warmup_ratio", 0.1),
+            gradient_accumulation_steps=self.args.get("gradient_accumulation_steps", 2),
+            learning_rate=self.args.get("learning_rate", 3.75e-5),
             fp16=True,
             evaluation_strategy="steps",
-            eval_steps=req_data.get("eval_steps", 50),
-            logging_steps=req_data.get("logging_steps", 25),
-            save_steps=req_data.get("save_steps", 50),
+            eval_steps=self.args.get("eval_steps", 50),
+            logging_steps=self.args.get("logging_steps", 25),
+            save_steps=self.args.get("save_steps", 50),
             predict_with_generate=True,
             generation_max_length=225,
             save_total_limit=3,
@@ -121,7 +122,7 @@ class WhisperFineTuning(Tasks):
             greater_is_better=False,
             push_to_hub=False,
             remove_unused_columns=False,
-            lr_scheduler_type=req_data.get("lr_scheduler_type", "constant"),
+            lr_scheduler_type=self.args.get("lr_scheduler_type", "constant"),
         )
 
     def push_to_hub(self, trainer, save_path, hf_token=None):
