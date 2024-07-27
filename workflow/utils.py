@@ -300,8 +300,8 @@ def get_task_config(task=None):
                 },
             },
             "telemetry_data_field": {"input": "query", "output": None},
-            "model_save_path": "smokeyScraper/op_whisper",
-            "dataset_path": "smokeyScraper/test_audio",
+            "model_save_path": "SamagraDataGov/whisper-finetuned",
+            "dataset_path": "SamagraDataGov/audio_dataset",
             "system_prompt": """The classifier model that you're training is a BERT classifier with the following classes and class descriptions : 
                                 agricultural_scheme: The farmer query is about schemes in Odisha
                                 agriculture: General agri queries

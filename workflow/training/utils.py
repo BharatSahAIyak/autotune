@@ -1,7 +1,7 @@
 from django.conf import settings
 from huggingface_hub import HfApi, snapshot_download
 
-from workflow.training import Colbert, NamedEntityRecognition, TextClassification
+from workflow.training import Colbert, NamedEntityRecognition, TextClassification, WhisperFineTuning
 
 
 def download_model(repo_id):
@@ -41,6 +41,7 @@ def get_task_class(task):
         "text_classification": TextClassification,
         "embedding": Colbert,
         "ner": NamedEntityRecognition,
+        "whisper_finetuning": WhisperFineTuning,
     }
 
     task_class = tasks.get(task)

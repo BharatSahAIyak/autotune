@@ -95,7 +95,7 @@ def train_model(celery, req_data, task_id):
 
     trainer.train()
 
-    metrics = trainer.evaluate(task.tokenized_dataset["test"])
+    metrics = trainer.evaluate()
     json_metrics = json.dumps(metrics)
     json_bytes = json_metrics.encode("utf-8")
     fileObj = io.BytesIO(json_bytes)
@@ -130,6 +130,8 @@ def train_model(celery, req_data, task_id):
 
 def upload_cache(cached_dataset_id, training_task, dataset):
     # upload the cached dataset to HF
+    if(training_task=="whisper_finetuning"):   # caching dataset not yet implemented for whisper finetuning
+        return
     hf_api = HfApi(token=settings.HUGGING_FACE_TOKEN)
 
     cached_dataset = Dataset.objects.get(id=cached_dataset_id)
