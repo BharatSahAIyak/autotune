@@ -12,8 +12,9 @@ from huggingface_hub import CommitOperationAdd, HfApi, login
 from transformers import TrainerCallback
 
 from workflow.models import Dataset, DatasetData, MLModel, Task, TrainingMetadata, User
-from .utils import get_task_class
+from .utils import get_task_class, get_model_class
 from workflow.utils import get_task_mapping
+from workflow.training.quantize_model import quantize_model
 
 logger = get_task_logger(__name__)
 
@@ -68,6 +69,31 @@ def train(self, req_data, user_id, training_task, cached_dataset_id):
         logger.info("Created TrainingMetadata")
     except Exception as e:
         logger.error(f"Failed to update model and log: {str(e)}")
+
+    if "quantization_type" in req_data and req_data["quantization_type"]:
+        task.status = "QUANTIZING"
+        task.save()
+        model_class = get_model_class(req_data["task_type"])
+        if model_class:
+            try:
+                quantized_model = quantize_model(
+                    model_name = req_data["save_path"],
+                    model_class = model_class,
+                    quantization_type = req_data["quantization_type"],
+                    test_text = req_data["test_text"] #user has option to send this
+                )
+                if quantized_model:
+                    quantized_save_path = f"{req_data['save_path']}_quantized"
+                    api_key = settings.HUGGING_FACE_TOKEN
+                    login(token=api_key)
+                    quantized_model.push_to_hub(quantized_save_path, hf_token=api_key)
+                    logger.info(f"Quantized model saved to {quantized_save_path}")
+                else:
+                    logger.warning(f"Quantization process did not return a model")
+            except Exception as e:
+                logger.error(f"Failed to quantize model: {str(e)}")
+        else:
+            logger.error(f"Unsupported task for quantization: {req_data['task_type']}")
 
     task.status = "COMPLETE"
     task.save()
