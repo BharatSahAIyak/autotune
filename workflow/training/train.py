@@ -89,7 +89,11 @@ def train(self, req_data, user_id, training_task, cached_dataset_id):
                     quantized_model.push_to_hub(quantized_save_path, hf_token=api_key)
                     logger.info(f"Quantized model saved to {quantized_save_path}")
                 else:
-                    logger.warning(f"Quantization process did not return a model")
+                    logger.warning("Quantization process did not return a model")
+            except ValueError as ve:
+                logger.error(f"ValueError during quantization: {str(ve)}")
+            except RuntimeError as re:
+                logger.error(f"RuntimeError during quantization: {str(re)}")
             except Exception as e:
                 logger.error(f"Failed to quantize model: {str(e)}")
         else:
