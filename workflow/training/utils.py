@@ -2,7 +2,14 @@ from django.conf import settings
 from huggingface_hub import HfApi, snapshot_download
 
 from workflow.training import Colbert, NamedEntityRecognition, TextClassification, WhisperFineTuning
-
+from transformers import (
+    AutoModelForSequenceClassification,
+    AutoModelForQuestionAnswering,
+    AutoModelForTokenClassification,
+    AutoModelForCausalLM,
+    AutoModel,
+    WhisperForConditionalGeneration
+)
 
 def download_model(repo_id):
     """
@@ -46,3 +53,14 @@ def get_task_class(task):
 
     task_class = tasks.get(task)
     return task_class
+
+def get_model_class(task_type):
+    task_to_model = {
+        "text_classification": AutoModelForSequenceClassification,
+        "question_answering": AutoModelForQuestionAnswering,
+        "token_classification": AutoModelForTokenClassification,
+        "causal_lm": AutoModelForCausalLM,
+        "embedding": AutoModel,
+        "whisper_finetuning": WhisperForConditionalGeneration
+    }
+    return task_to_model.get(task_type)

@@ -242,6 +242,20 @@ class ModelDataSerializer(serializers.Serializer):
         ],
         help_text="Type of the training task.",
     )
+    quantization_type = serializers.ChoiceField(
+        choices=[
+            "4-bit",
+            "8-bit",
+            "16-bit-dynamic",
+            "16-bit-static",
+        ],
+        required=False, allow_null=True,
+    )
+    test_text = serializers.CharField(
+        required=False, 
+        allow_blank=True, 
+        help_text="Sample text for testing the quantized model."
+    )
     version = serializers.CharField(
         max_length=50, required=False, default="main", help_text="Version of the model."
     )
