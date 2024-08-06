@@ -15,6 +15,7 @@ from workflow.models import Dataset, DatasetData, MLModel, Task, TrainingMetadat
 from .utils import get_task_class, get_model_class
 from workflow.utils import get_task_mapping
 from workflow.training.quantize_model import quantize_model
+from .onnx import convert_to_onnx, push_onnx_to_hub
 
 logger = get_task_logger(__name__)
 
@@ -76,20 +77,28 @@ def train(self, req_data, user_id, training_task, cached_dataset_id):
         model_class = get_model_class(req_data["task_type"])
         if model_class:
             try:
-                quantized_model = quantize_model(
+                quantized_model_dir = quantize_model(
                     model_name = req_data["save_path"],
                     model_class = model_class,
                     quantization_type = req_data["quantization_type"],
-                    test_text = req_data["test_text"] #user has option to send this
+                    test_text = req_data.get("test_text", "")
                 )
-                if quantized_model:
+                if quantized_model_dir:
                     quantized_save_path = f"{req_data['save_path']}_quantized"
                     api_key = settings.HUGGING_FACE_TOKEN
                     login(token=api_key)
-                    quantized_model.push_to_hub(quantized_save_path, hf_token=api_key)
+                    
+                    api = HfApi()
+                    api.create_repo(repo_id=quantized_save_path, exist_ok=True)
+                    api.upload_folder(
+                        folder_path=quantized_model_dir,
+                        repo_id=quantized_save_path,
+                        repo_type="model",
+                    )
+                    
                     logger.info(f"Quantized model saved to {quantized_save_path}")
-                else:
-                    logger.warning("Quantization process did not return a model")
+                    
+                    shutil.rmtree(quantized_model_dir)
             except ValueError as ve:
                 logger.error(f"ValueError during quantization: {str(ve)}")
             except RuntimeError as re:
@@ -98,6 +107,28 @@ def train(self, req_data, user_id, training_task, cached_dataset_id):
                 logger.error(f"Failed to quantize model: {str(e)}")
         else:
             logger.error(f"Unsupported task for quantization: {req_data['task_type']}")
+
+    if req_data.get("onnx", False):
+        task.status = "CONVERTING_TO_ONNX"
+        task.save()
+        try:
+            api_key = settings.HUGGING_FACE_TOKEN
+            login(token=api_key)
+            api = HfApi()
+
+            original_onnx_output_dir = f"./onnx_output_{task_id}_original"
+            original_converted_path = convert_to_onnx(
+                model_name=req_data['save_path'],
+                task=req_data['task_type'],
+                output_dir=original_onnx_output_dir
+            )
+            if original_converted_path:
+                original_onnx_save_path = f"{req_data['save_path']}_onnx"
+                push_onnx_to_hub(api, original_converted_path, original_onnx_save_path)
+                shutil.rmtree(original_onnx_output_dir)
+                logger.info(f"Original ONNX model pushed to Hub: {original_onnx_save_path}")
+        except Exception as e:
+            logger.error(f"Failed to convert model to ONNX: {str(e)}")
 
     task.status = "COMPLETE"
     task.save()

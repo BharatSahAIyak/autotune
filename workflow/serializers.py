@@ -256,6 +256,11 @@ class ModelDataSerializer(serializers.Serializer):
         allow_blank=True, 
         help_text="Sample text for testing the quantized model."
     )
+    onnx = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text="Convert the model to ONNX format.",
+    )
     version = serializers.CharField(
         max_length=50, required=False, default="main", help_text="Version of the model."
     )

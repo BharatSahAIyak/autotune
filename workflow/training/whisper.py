@@ -128,3 +128,4 @@ class WhisperFineTuning(Tasks):
         trainer.model.push_to_hub(
             save_path, commit_message="pytorch_model.bin upload/update"
         )
+        self.processor.push_to_hub(save_path, token=hf_token)
