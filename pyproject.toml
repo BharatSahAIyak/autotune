@@ -20,7 +20,7 @@ celery = {extras = ["redis"], version = "^5.3.1"}
 evaluate = "^0.4.0"
 rouge-score = "^0.1.2"
 scikit-learn = "^1.5.0"
-optimum = {extras = ["exporters"], version = "^1.10.1"}
+optimum = "1.21.3"
 python-dotenv = "^1.0.0"
 llama-index = "^0.8.66"
 langchain = "^0.1.0"
@@ -59,6 +59,8 @@ jiwer = "^3.0.4"
 soundfile = "^0.12.1"
 librosa = "^0.10.2.post1"
 bitsandbytes = "^0.43.3"
+onnx = "^1.16.2"
+onnxruntime = "^1.18.1"
 
 [build-system]
 requires = ["poetry-core"]
