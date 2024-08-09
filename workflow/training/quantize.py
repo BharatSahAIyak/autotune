@@ -45,10 +45,7 @@ class ModelHandler:
         elif self.quantization_type == "8-bit":
             quantization_config = BitsAndBytesConfig(load_in_8bit=True)
             model = self.model_class.from_pretrained(self.model_name, quantization_config=quantization_config)
-        elif self.quantization_type == "16-bit-static":
-            model = self.model_class.from_pretrained(self.model_name)
-            model = model.half()
-        elif self.quantization_type == "16-bit-dynamic":
+        elif self.quantization_type == "16-bit-float":
             model = self.model_class.from_pretrained(self.model_name)
             model = model.to(torch.float16)
         else:
