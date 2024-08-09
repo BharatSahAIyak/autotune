@@ -20,7 +20,6 @@ class WhisperFineTuning(Tasks):
     def __init__(self, model_name: str, version: str, args):
         super().__init__("whisper_finetuning", model_name, version)
         self.metrics = evaluate.load("wer")
-        self.tokenizer = WhisperTokenizer.from_pretrained(model_name, language=args["language"], task="transcribe")
         self.processor = WhisperProcessor.from_pretrained(model_name, language=args["language"], task="transcribe")
         self.feature_extractor = WhisperFeatureExtractor.from_pretrained(model_name)
         self.args = args
@@ -129,4 +128,3 @@ class WhisperFineTuning(Tasks):
         trainer.model.push_to_hub(
             save_path, commit_message="pytorch_model.bin upload/update"
         )
-        trainer.tokenizer.push_to_hub(save_path)

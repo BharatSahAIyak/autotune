@@ -242,6 +242,38 @@ class ModelDataSerializer(serializers.Serializer):
         ],
         help_text="Type of the training task.",
     )
+    quantization_type = serializers.ChoiceField(
+        choices=[
+            "4-bit",
+            "8-bit",
+            "16-bit-float",
+            None
+        ],
+        required=False,
+        allow_null=True,
+        help_text="Type of quantization to apply (4-bit, 8-bit, 16-bit-int, or 16-bit-float).",
+    )
+    test_text = serializers.CharField(
+        required=False, 
+        allow_blank=True, 
+        help_text="Sample text for testing the quantized model."
+    )
+    onnx = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text="Convert the model to ONNX format.",
+    )
+    onnx_quantize = serializers.ChoiceField(
+        choices=[
+            "8-bit",
+            "16-bit-int",
+            "16-bit-float",
+            None
+        ],
+        required=False,
+        allow_null=True,
+        help_text="Type of quantization to apply to the ONNX model (8-bit, 16-bit-int, or 16-bit-float).",
+    )
     version = serializers.CharField(
         max_length=50, required=False, default="main", help_text="Version of the model."
     )
