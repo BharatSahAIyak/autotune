@@ -9,6 +9,7 @@ from transformers import (
 )
 import torch
 import time
+import os
 
 class SequenceClassificationHandler(ModelHandler):
     def decode_output(self, outputs):
@@ -100,7 +101,21 @@ def quantize_model(model_name, model_class, quantization_type, test_text=None):
     handler_class = handler_map.get(model_class)
     if handler_class:
         handler = handler_class(model_name, model_class, quantization_type, test_text)
-        return handler.quantize_and_compare()
+        quantized_model = handler.quantize_and_compare()
+        
+        temp_dir = f"temp_quantized_{model_name.replace('/', '_')}"
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        quantized_model.save_pretrained(temp_dir)
+        
+        if hasattr(handler, 'tokenizer'):
+            handler.tokenizer.save_pretrained(temp_dir)
+        elif hasattr(handler, 'processor'):
+            handler.processor.save_pretrained(temp_dir)
+        else:
+            print("Could not save tokenizer or processor")
+        
+        return temp_dir
     else:
         print(f"Model {model_name} can't be quantized as it's not supported.")
         return None
