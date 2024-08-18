@@ -11,6 +11,7 @@ import torch
 from dataclasses import dataclass
 from typing import Any, Dict, List, Union
 import logging
+import os
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -24,10 +25,107 @@ class WhisperFineTuning(Tasks):
         self.feature_extractor = WhisperFeatureExtractor.from_pretrained(model_name)
         self.args = args
 
+    def process_and_upload_dataset(self, dataset,dataset_name):
+        import tempfile
+        import os
+        from gtts import gTTS
+        from datasets import load_dataset, DatasetDict, Audio, Dataset
+        from huggingface_hub import HfApi, create_repo
+        import random
+        temp_dir = tempfile.mkdtemp()
+        import os
+        import azure.cognitiveservices.speech as speechsdk
+        speech_config = speechsdk.SpeechConfig(subscription=os.environ.get('AZURE_TTS_KEY'),region = os.environ.get('AZURE_TTS_REGION'))
+        speech_config.speech_synthesis_voice_name='en-US-AvaMultilingualNeural'
+
+        def text_to_audio(text):
+            audio_path = os.path.join(temp_dir, f"audio_{hash(text)}.wav")
+            audio_config = speechsdk.audio.AudioOutputConfig(filename=audio_path)
+            speech_synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=audio_config)
+            result = speech_synthesizer.speak_text_async(text).get()
+            if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
+                return audio_path
+            else:
+                print(f"Error synthesizing audio: {result.reason}")
+                return None
+
+        def process_split(split):
+            audio_data = []
+            sentences = []
+            remaining = ""
+            for example in split:
+                text = example[split.column_names[0]]
+                if len(text) > 200:
+                    remaining+=(text+" ")
+                    continue
+                audio_path = text_to_audio(text)
+                audio_data.append({"path": audio_path})
+                sentences.append(text)
+            if remaining:
+                while len(remaining) > 200:
+                    split_index = remaining[:200].rfind(' ')
+                    if split_index == -1:
+                        split_index = 200
+                    text = remaining[:split_index].strip()
+                    audio_path = text_to_audio(text)
+                    audio_data.append({"path": audio_path})
+                    sentences.append(text)
+                    remaining = remaining[split_index:].strip()
+            if remaining:
+                audio_path = text_to_audio(remaining)
+                audio_data.append({"path": audio_path})
+                sentences.append(remaining)
+            processed_split = Dataset.from_dict({
+                "audio": audio_data,
+                "sentence": sentences
+            })
+            processed_split = processed_split.cast_column("audio", Audio())
+            return processed_split
+
+        def create_test_split(dataset, test_size=0.2):
+            data = list(dataset)
+            random.shuffle(data)
+            split_index = int(len(data) * (1 - test_size))
+            train_data = data[:split_index]
+            test_data = data[split_index:]
+            return Dataset.from_list(train_data), Dataset.from_list(test_data)
+
+        train_dataset = process_split(dataset['train'])
+        if 'test' in dataset:
+            test_dataset = process_split(dataset['test'])
+        else:
+            train_dataset, test_dataset = create_test_split(train_dataset)
+
+        processed_dataset = DatasetDict({
+            'train': train_dataset,
+            'test': test_dataset
+        })
+        api = HfApi()
+        repo_id = f"{dataset_name}__audio"
+        
+        try:
+            create_repo(repo_id, repo_type="dataset", token=os.environ.get('HUGGING_FACE_TOKEN'))
+        except Exception as e:
+            print(f"Repo already exists or couldn't be created: {e}")
+        
+        processed_dataset.push_to_hub(repo_id, token=os.environ.get('HUGGING_FACE_TOKEN'))
+        
+        print(f"Dataset uploaded successfully to {repo_id}")
+        
+        return processed_dataset
+    
     def load_dataset(self, dataset_name):
         dataset = load_dataset(dataset_name)
         train_dataset = dataset["train"]
-        
+        if len(train_dataset.column_names) == 1:
+            dataset = self.process_and_upload_dataset(dataset,dataset_name)
+            train_dataset = dataset["train"]
+            print("Dataset splits:", dataset.keys())
+            for split_name, split_data in dataset.items():
+                print(f"\nSplit: {split_name}")
+                print("Columns:", split_data.column_names)
+                print("Number of rows:", len(split_data))
+                
         if "audio" not in train_dataset.column_names:
             audio_column = train_dataset.column_names[0]
             train_dataset = train_dataset.rename_column(audio_column, "audio")
