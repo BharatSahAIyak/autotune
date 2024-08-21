@@ -314,6 +314,20 @@ def get_task_config(task=None):
             """,
             "schema_example": {"sentence": "string", "label": "string"},
         },
+        "embedding_finetuning": {
+            "model": "BAAI/bge-small-en-v1.5",
+            "task": "embedding_finetuning",
+            "label_studio_element": {
+                "name": "Embedding Fine-tuning",
+                "config": {},
+            },
+            "telemetry_data_field": {"input": "string", "output": None},
+            "model_save_path": "SamagraDataGov/embedding_finetuned",
+            "dataset_path": "SamagraDataGov/embedding_ds",
+            "system_prompt": "Fine-tune embedding model for information retrieval tasks.",
+            "user_prompt_template": "Fine-tune the embedding model using the provided question-answer pairs.",
+            "schema_example": {"question": "string", "positive": "string"},
+        },
     }
 
     keys = list(task_config.keys())
@@ -337,6 +351,7 @@ def get_task_mapping(task):
         "text_classification": {"input_string": "text", "output_string": "class"},
         "ner": {"input_string": "Input", "output_string": "Output"},
         "whisper_finetuning": {"input_string": "audio", "output_string": "sentence"},
+        "embedding_finetuning": {"input_string": "question", "output_string": "positive"},
     }
     if task in mapping:
         return mapping[task]

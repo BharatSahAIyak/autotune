@@ -169,7 +169,7 @@ class CacheDatasetMixin:
                 ).first()
                 workflow_id = workflow.workflow_id
 
-                if task_type == "whisper_finetuning":
+                if task_type in ["whisper_finetuning", "embedding_finetuning"]:
                     request.META["workflow_id"] = workflow_id
                     response = super().dispatch(request, *args, **kwargs)
                     return response

@@ -1,7 +1,8 @@
 from django.conf import settings
 from huggingface_hub import HfApi, snapshot_download
 
-from workflow.training import Colbert, NamedEntityRecognition, TextClassification, WhisperFineTuning
+from workflow.training import Colbert, NamedEntityRecognition, TextClassification, WhisperFineTuning, EmbeddingFineTuning
+from sentence_transformers import SentenceTransformer
 from transformers import (
     AutoModelForSequenceClassification,
     AutoModelForQuestionAnswering,
@@ -49,6 +50,7 @@ def get_task_class(task):
         "embedding": Colbert,
         "ner": NamedEntityRecognition,
         "whisper_finetuning": WhisperFineTuning,
+        "embedding_finetuning": EmbeddingFineTuning,
     }
 
     task_class = tasks.get(task)
@@ -61,6 +63,7 @@ def get_model_class(task_type):
         "token_classification": AutoModelForTokenClassification,
         "causal_lm": AutoModelForCausalLM,
         "embedding": AutoModel,
-        "whisper_finetuning": WhisperForConditionalGeneration
+        "whisper_finetuning": WhisperForConditionalGeneration,
+        "embedding_finetuning": AutoModel,
     }
     return task_to_model.get(task_type)

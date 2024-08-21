@@ -239,8 +239,14 @@ class ModelDataSerializer(serializers.Serializer):
             "embedding",
             "ner",
             "whisper_finetuning",
+            "embedding_finetuning",
         ],
         help_text="Type of the training task.",
+    )
+    guide_model = serializers.CharField(
+        max_length=255,
+        required=False,
+        help_text="Name of the guide model for embedding fine-tuning.",
     )
     quantization_type = serializers.ChoiceField(
         choices=[

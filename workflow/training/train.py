@@ -205,7 +205,7 @@ def train_model(celery, req_data, task_id):
 
 def upload_cache(cached_dataset_id, training_task, dataset):
     # upload the cached dataset to HF
-    if(training_task=="whisper_finetuning"):   # caching dataset not yet implemented for whisper finetuning
+    if(training_task == "whisper_finetuning" or training_task == "embedding_finetuning"):   # caching dataset not yet implemented for whisper finetuning & embedding finetuning
         return
     hf_api = HfApi(token=settings.HUGGING_FACE_TOKEN)
 
