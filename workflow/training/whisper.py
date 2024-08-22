@@ -160,7 +160,7 @@ class WhisperFineTuning(Tasks):
             'test': test_dataset
         })
         api = HfApi()
-        repo_id = f"{dataset_name}__audio"
+        repo_id = f"{dataset_name}_audio"
         try:
             create_repo(repo_id, repo_type="dataset", token=os.environ.get('HUGGING_FACE_TOKEN'))
         except Exception as e:
