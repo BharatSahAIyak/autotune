@@ -11,11 +11,18 @@ import torch
 from dataclasses import dataclass
 from typing import Any, Dict, List, Union
 import logging
-import os
+import tempfile
+from huggingface_hub import HfApi, create_repo
+import random
+import azure.cognitiveservices.speech as speechsdk
+import numpy as np
+import soundfile as sf
+from pydub import AudioSegment
+from pydub.silence import split_on_silence
+from scipy import signal
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
 
 class WhisperFineTuning(Tasks):
     def __init__(self, model_name: str, version: str, args):
@@ -24,17 +31,67 @@ class WhisperFineTuning(Tasks):
         self.processor = WhisperProcessor.from_pretrained(model_name, language=args["language"], task="transcribe")
         self.feature_extractor = WhisperFeatureExtractor.from_pretrained(model_name)
         self.args = args
+    def output_varied_word_loudness_with_noise(self,input_audio_path):
+        audio = AudioSegment.from_wav(input_audio_path)
 
+        def gaussian_kernel(size, sigma=1.0):
+            x = np.linspace(-size // 2, size // 2, size)
+            kernel = np.exp(-(x ** 2) / (2 * sigma ** 2))
+            return kernel / np.sum(kernel)
+
+        def apply_gaussian_filter(audio_segment, kernel_size=21, sigma=1.0):
+            audio_array = np.array(audio_segment.get_array_of_samples()).astype(np.float32)
+            if audio_segment.channels == 2:
+                audio_array = audio_array.reshape((-1, 2)).mean(axis=1)
+            audio_array = audio_array / np.max(np.abs(audio_array))
+            kernel = gaussian_kernel(kernel_size, sigma)
+            filtered_signal = signal.convolve(audio_array, kernel, mode='same')
+            filtered_signal = filtered_signal / np.max(np.abs(filtered_signal))
+            filtered_signal = (filtered_signal * 32767).astype(np.int16)
+            filtered_audio = AudioSegment(
+                filtered_signal.tobytes(),
+                frame_rate=audio_segment.frame_rate,
+                sample_width=2,  # 16-bit audio
+                channels=1
+            )
+            return filtered_audio
+
+        def generate_varied_noise(length, max_amplitude):
+            base_noise = np.random.normal(0, 1, length)
+            envelope = np.random.uniform(0, 1, length)
+            return base_noise * envelope * max_amplitude
+
+        def split_into_words(audio):
+            chunks = split_on_silence(audio, 
+                                    min_silence_len=50,
+                                    silence_thresh=-40,
+                                    keep_silence=50)  
+            return chunks
+
+        def adjust_random_word_volumes(chunks, min_adjustment=0.3, max_adjustment=10.0):
+            adjusted_chunks = []
+            for chunk in chunks:
+                if np.random.random() < 0.8:  
+                    adjustment = np.random.uniform(min_adjustment, max_adjustment)
+                    chunk = chunk + (10 * np.log10(adjustment))
+                adjusted_chunks.append(chunk)
+            return adjusted_chunks
+        
+        word_chunks = split_into_words(audio)
+        adjusted_chunks = adjust_random_word_volumes(word_chunks)
+        varied_loudness_audio = sum(adjusted_chunks)
+        kernel_size = 21
+        sigma = 1.0
+        filtered_audio = apply_gaussian_filter(varied_loudness_audio, kernel_size, sigma)
+        audio_data, sample_rate = sf.read(filtered_audio.export(input_audio_path, format="wav"))
+        max_noise_amplitude = 0.01
+        noise = generate_varied_noise(len(audio_data), max_noise_amplitude)
+        noisy_audio = audio_data + noise
+        noisy_audio = np.clip(noisy_audio, -1, 1)
+        sf.write(input_audio_path, noisy_audio, sample_rate)
+        return input_audio_path
     def process_and_upload_dataset(self, dataset,dataset_name):
-        import tempfile
-        import os
-        from gtts import gTTS
-        from datasets import load_dataset, DatasetDict, Audio, Dataset
-        from huggingface_hub import HfApi, create_repo
-        import random
         temp_dir = tempfile.mkdtemp()
-        import os
-        import azure.cognitiveservices.speech as speechsdk
         speech_config = speechsdk.SpeechConfig(subscription=os.environ.get('AZURE_TTS_KEY'),region = os.environ.get('AZURE_TTS_REGION'))
         speech_config.speech_synthesis_voice_name='en-US-AvaMultilingualNeural'
 
@@ -44,6 +101,8 @@ class WhisperFineTuning(Tasks):
             speech_synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=audio_config)
             result = speech_synthesizer.speak_text_async(text).get()
             if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
+        
+                audio_path = self.output_varied_word_loudness_with_noise(audio_path)
                 return audio_path
             else:
                 print(f"Error synthesizing audio: {result.reason}")
@@ -55,17 +114,17 @@ class WhisperFineTuning(Tasks):
             remaining = ""
             for example in split:
                 text = example[split.column_names[0]]
-                if len(text) > 200:
+                if len(text) > 250:
                     remaining+=(text+" ")
                     continue
                 audio_path = text_to_audio(text)
                 audio_data.append({"path": audio_path})
                 sentences.append(text)
             if remaining:
-                while len(remaining) > 200:
-                    split_index = remaining[:200].rfind(' ')
+                while len(remaining) > 250:
+                    split_index = remaining[:250].rfind(' ')
                     if split_index == -1:
-                        split_index = 200
+                        split_index = 250
                     text = remaining[:split_index].strip()
                     audio_path = text_to_audio(text)
                     audio_data.append({"path": audio_path})
@@ -102,14 +161,11 @@ class WhisperFineTuning(Tasks):
         })
         api = HfApi()
         repo_id = f"{dataset_name}__audio"
-        
         try:
             create_repo(repo_id, repo_type="dataset", token=os.environ.get('HUGGING_FACE_TOKEN'))
         except Exception as e:
             print(f"Repo already exists or couldn't be created: {e}")
-        
         processed_dataset.push_to_hub(repo_id, token=os.environ.get('HUGGING_FACE_TOKEN'))
-        
         print(f"Dataset uploaded successfully to {repo_id}")
         
         return processed_dataset
