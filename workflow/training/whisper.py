@@ -20,6 +20,8 @@ import soundfile as sf
 from pydub import AudioSegment
 from pydub.silence import split_on_silence
 from scipy import signal
+import os
+from datasets import Dataset, DatasetDict
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -159,7 +161,6 @@ class WhisperFineTuning(Tasks):
             'train': train_dataset,
             'test': test_dataset
         })
-        api = HfApi()
         repo_id = f"{dataset_name}_audio"
         try:
             create_repo(repo_id, repo_type="dataset", token=os.environ.get('HUGGING_FACE_TOKEN'))
