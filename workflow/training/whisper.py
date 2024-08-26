@@ -22,6 +22,7 @@ from pydub.silence import split_on_silence
 from scipy import signal
 import os
 from datasets import Dataset, DatasetDict
+from textwrap import wrap
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -53,7 +54,7 @@ class WhisperFineTuning(Tasks):
             filtered_audio = AudioSegment(
                 filtered_signal.tobytes(),
                 frame_rate=audio_segment.frame_rate,
-                sample_width=2,  # 16-bit audio
+                sample_width=2,  
                 channels=1
             )
             return filtered_audio
@@ -113,29 +114,23 @@ class WhisperFineTuning(Tasks):
         def process_split(split):
             audio_data = []
             sentences = []
-            remaining = ""
-            for example in split:
-                text = example[split.column_names[0]]
-                if len(text) > 250:
-                    remaining+=(text+" ")
-                    continue
-                audio_path = text_to_audio(text)
-                audio_data.append({"path": audio_path})
-                sentences.append(text)
-            if remaining:
-                while len(remaining) > 250:
-                    split_index = remaining[:250].rfind(' ')
-                    if split_index == -1:
-                        split_index = 250
-                    text = remaining[:split_index].strip()
+            
+            def process_text(text):
+                if len(text) <= 250:
                     audio_path = text_to_audio(text)
                     audio_data.append({"path": audio_path})
                     sentences.append(text)
-                    remaining = remaining[split_index:].strip()
-            if remaining:
-                audio_path = text_to_audio(remaining)
-                audio_data.append({"path": audio_path})
-                sentences.append(remaining)
+                else:
+                    chunks = wrap(text, width=250, break_long_words=False, replace_whitespace=False)
+                    for chunk in chunks:
+                        audio_path = text_to_audio(chunk)
+                        audio_data.append({"path": audio_path})
+                        sentences.append(chunk)
+
+            for example in split:
+                text = example[split.column_names[0]]
+                process_text(text)
+
             processed_split = Dataset.from_dict({
                 "audio": audio_data,
                 "sentence": sentences
