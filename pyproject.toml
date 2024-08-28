@@ -61,6 +61,7 @@ librosa = "^0.10.2.post1"
 bitsandbytes = "^0.43.3"
 onnx = "^1.16.2"
 onnxruntime = "^1.18.1"
+onnxconverter-common = ">=1.14.0"
 
 [build-system]
 requires = ["poetry-core"]
