@@ -62,6 +62,10 @@ bitsandbytes = "^0.43.3"
 onnx = "^1.16.2"
 onnxruntime = "^1.18.1"
 onnxconverter-common = ">=1.14.0"
+typing-extensions = "^4.12.2"
+huggingface-hub = "^0.24.6"
+azure-cognitiveservices-speech = "^1.40.0"
+textwrap3 = "^0.9.2"
 
 [build-system]
 requires = ["poetry-core"]
