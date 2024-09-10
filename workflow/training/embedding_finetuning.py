@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class EmbeddingFineTuning(Tasks):
     def __init__(self, model_name: str, version: str, args):
         super().__init__("embedding_finetuning", model_name, version)
-        self.guide_model = args.get("guide_model", model_name)
+        self.guide_model = args.get("guide_model", "sentence-transformers/all-MiniLM-L6-v2")
         self.args = args
 
     def load_dataset(self, dataset_name):
