@@ -54,7 +54,7 @@ def convert_to_onnx(model_name, task, output_dir):
     os.makedirs(output_dir, exist_ok=True)
     
     task_mapping = {
-        "embedding": (None, AutoTokenizer, "feature-extraction"),
+        "embedding_finetuning": (None, AutoTokenizer, "feature-extraction"),
         "ner": (ORTModelForTokenClassification, AutoTokenizer, None),
         "text_classification": (ORTModelForSequenceClassification, AutoTokenizer, None),
         "whisper_finetuning": (ORTModelForSpeechSeq2Seq, WhisperProcessor, None),
@@ -68,7 +68,7 @@ def convert_to_onnx(model_name, task, output_dir):
 
     ORTModelClass, ProcessorClass, special_task = task_mapping[task]
 
-    if task == "embedding":
+    if task == "embedding_finetuning":
         ort_optimizer = ORTOptimizer.from_pretrained(model_name)
         ort_optimizer.export(output_dir=output_dir, task=special_task)
     else:
