@@ -17,7 +17,7 @@ from pathlib import Path
 import coloredlogs
 import dj_database_url
 from dotenv import load_dotenv
-from urllib.parse import urlparse
+
 load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -45,7 +45,7 @@ LLM_GENERATION_NUM_SAMPLES = os.getenv("LLM_GENERATION_NUM_SAMPLES")
 MAX_BATCH_SIZE = os.getenv("MAX_BATCH_SIZE")
 
 # Redis Configuration
-REDIS_URL = os.getenv("AUTOTUNE_REDIS_URL")
+REDIS_URL = os.getenv("REDIS_URL")
 
 # Celery Configuration
 CELERY_BROKER_URL = REDIS_URL
@@ -61,15 +61,15 @@ HUGGING_FACE_TOKEN = os.getenv("HUGGING_FACE_TOKEN")
 
 HUGGING_FACE_USERNAME = os.getenv("HUGGING_FACE_USERNAME")
 
-MINIO_BASE_URL = urlparse(os.getenv("MINIO_EXTERNAL_BASE_URL")).netloc
+MINIO_BASE_URL = os.getenv("MINIO_BASE_URL")
 
 MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY")
 
 MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY")
 
-MINIO_SECURE_CONN =  "True"
+MINIO_SECURE_CONN = os.getenv("MINIO_SECURE_CONN") == "True"
 
-MINIO_BUCKET_NAME = os.getenv("AUTOTUNE_MINIO_BUCKET")
+MINIO_BUCKET_NAME = os.getenv("MINIO_BUCKET")
 
 GITHUB_PAT = os.getenv("GITHUB_PAT")
 
