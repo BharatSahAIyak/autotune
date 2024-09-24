@@ -107,7 +107,7 @@ class WhisperFineTuning(Tasks):
         return input_audio_path
     def process_and_upload_dataset(self, dataset,dataset_name):
         temp_dir = tempfile.mkdtemp()
-        speech_config = speechsdk.SpeechConfig(subscription=os.environ.get('AZURE_TTS_KEY'),region = os.environ.get('AZURE_TTS_REGION'))
+        speech_config = speechsdk.SpeechConfig(subscription=os.environ.get('AZURE_SPEECH_KEY'),region = os.environ.get('AZURE_SPEECH_REGION'))
         speech_config.speech_synthesis_voice_name='en-US-AvaMultilingualNeural'
 
         def text_to_audio(text):
