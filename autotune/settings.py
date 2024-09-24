@@ -57,15 +57,15 @@ CELERY_MAX_RETRIES = os.getenv("CELERY_MAX_RETRIES")
 CELERY_TIMEZONE = "UTC"
 
 # HuggingFace token
-HUGGING_FACE_TOKEN = os.getenv("HUGGING_FACE_TOKEN")
+HUGGING_FACE_TOKEN = os.getenv("HUGGINGFACE_TOKEN")
 
-HUGGING_FACE_USERNAME = os.getenv("HUGGING_FACE_USERNAME")
+HUGGING_FACE_USERNAME = os.getenv("HUGGINGFACE_USERNAME")
 
 MINIO_BASE_URL = urlparse(os.getenv("MINIO_EXTERNAL_BASE_URL")).netloc
 
 MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY")
 
-MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY")
+MINIO_SECRET_KEY = os.getenv("MINIO_ACCESS_KEY")
 
 MINIO_SECURE_CONN =  "True"
 
@@ -129,11 +129,11 @@ ASGI_APPLICATION = "autotune.asgi.application"
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
-DATABASE_URL = os.environ.get(
+AUTOTUNE_DATABASE_URL = os.environ.get(
     "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/autotune"
 )
 
-DATABASES = {"default": dj_database_url.parse(DATABASE_URL)}
+DATABASES = {"default": dj_database_url.parse(AUTOTUNE_DATABASE_URL)}
 
 CORS_ALLOW_HEADERS = [
     "accept",
