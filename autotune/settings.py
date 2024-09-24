@@ -65,7 +65,7 @@ MINIO_BASE_URL = urlparse(os.getenv("MINIO_EXTERNAL_BASE_URL")).netloc
 
 MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY")
 
-MINIO_SECRET_KEY = os.getenv("MINIO_ACCESS_KEY")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY")
 
 MINIO_SECURE_CONN =  "True"
 
