@@ -17,6 +17,7 @@ from pathlib import Path
 import coloredlogs
 import dj_database_url
 from dotenv import load_dotenv
+from urllib.parse import urlparse
 
 load_dotenv()
 
@@ -61,7 +62,7 @@ HUGGING_FACE_TOKEN = os.getenv("HUGGINGFACE_TOKEN")
 
 HUGGING_FACE_USERNAME = os.getenv("HUGGINGFACE_USERNAME")
 
-MINIO_BASE_URL = os.getenv("MINIO_EXTERNAL_BASE_URL")
+MINIO_BASE_URL = urlparse(os.getenv("MINIO_EXTERNAL_BASE_URL")).netloc
 
 MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY")
 
@@ -69,7 +70,15 @@ MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY")
 
 MINIO_SECURE_CONN = "True"
 
-MINIO_BUCKET_NAME = os.getenv("MINIO_BUCKET")
+MINIO_BUCKET_NAME = os.getenv("AUTOTUNE_MINIO_BUCKET")
+
+AZURE_SPEECH_KEY = os.getenv("AZURE_SPEECH_KEY")
+
+AZURE_SPEECH_REGION = os.getenv("AZURE_SPEECH_REGION")
+
+AZURE_TRANSLATE_KEY = os.getenv("AZURE_TRANSLATE_KEY")
+
+AZURE_TRANSLATE_REGION = os.getenv("AZURE_TRANSLATE_REGION")
 
 GITHUB_PAT = os.getenv("GITHUB_PAT")
 
