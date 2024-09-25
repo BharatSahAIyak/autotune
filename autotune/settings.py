@@ -45,7 +45,7 @@ LLM_GENERATION_NUM_SAMPLES = os.getenv("LLM_GENERATION_NUM_SAMPLES")
 MAX_BATCH_SIZE = os.getenv("MAX_BATCH_SIZE")
 
 # Redis Configuration
-REDIS_URL = os.getenv("AUTOTUNE_REDIS_DB")
+REDIS_URL = os.getenv("REDIS_URL")
 
 # Celery Configuration
 CELERY_BROKER_URL = REDIS_URL
