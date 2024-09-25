@@ -17,6 +17,7 @@ from pathlib import Path
 import coloredlogs
 import dj_database_url
 from dotenv import load_dotenv
+from urllib.parse import urlparse
 
 load_dotenv()
 
@@ -61,7 +62,7 @@ HUGGING_FACE_TOKEN = os.getenv("HUGGINGFACE_TOKEN")
 
 HUGGING_FACE_USERNAME = os.getenv("HUGGINGFACE_USERNAME")
 
-MINIO_BASE_URL = os.getenv("MINIO_EXTERNAL_BASE_URL")
+MINIO_BASE_URL = urlparse(os.getenv("MINIO_EXTERNAL_BASE_URL")).netloc
 
 MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY")
 
