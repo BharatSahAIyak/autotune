@@ -11,7 +11,7 @@ class Workflowv2Config(AppConfig):
     def ready(self):
         import workflow.signals
 
-        bucket_name = settings.MINIO_BUCKET_NAME
+        bucket_name = settings.MINIO_BUCKET
         if not minio_client.bucket_exists(bucket_name):
             minio_client.make_bucket(bucket_name)
             print(f"created bucket {bucket_name}")
