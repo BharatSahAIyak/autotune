@@ -139,7 +139,7 @@ ASGI_APPLICATION = "autotune.asgi.application"
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
 AUTOTUNE_DATABASE_URL = os.environ.get(
-    "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/autotune"
+    "POSTGRES_INTERNAL_BASE_URL", "postgresql://postgres:postgres@localhost:5432/autotune"
 )
 
 DATABASES = {"default": dj_database_url.parse(AUTOTUNE_DATABASE_URL)}
