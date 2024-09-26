@@ -12,7 +12,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **kwargs):
         # Parse the database URL from environment variables
-        db_config = dj_database_url.parse(os.getenv("DATABASE_URL"))
+        db_config = dj_database_url.parse(os.getenv("AUTOTUNE_POSTGRES_URL"))
         db_name = db_config["NAME"]
 
         # Connect to the default 'postgres' database to check/create the target database
