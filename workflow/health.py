@@ -106,7 +106,7 @@ class HealthCheck:
 
     def postgres(self):
         try:
-            conn_params = dj_database_url.parse(settings.DATABASE_URL)
+            conn_params = dj_database_url.parse(settings.AUTOTUNE_DATABASE_URL)
             conn = psycopg2.connect(
                 dbname=conn_params["NAME"],
                 user=conn_params["USER"],
