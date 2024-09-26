@@ -13,11 +13,11 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 import logging
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 
 import coloredlogs
 import dj_database_url
 from dotenv import load_dotenv
-from urllib.parse import urlparse
 
 load_dotenv()
 
@@ -139,7 +139,7 @@ ASGI_APPLICATION = "autotune.asgi.application"
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
 AUTOTUNE_DATABASE_URL = os.environ.get(
-    "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/autotune"
+    "AUTOTUNE_POSTGRES_URL", "postgresql://postgres:postgres@localhost:5432/autotune"
 )
 
 DATABASES = {"default": dj_database_url.parse(AUTOTUNE_DATABASE_URL)}
