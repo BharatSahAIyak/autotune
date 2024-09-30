@@ -18,6 +18,7 @@ import os
 from datasets import Dataset, DatasetDict
 from django.conf import settings
 from textwrap import wrap
+import shutil
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -39,11 +40,15 @@ class WhisperFineTuning(Tasks):
         audio_config = speechsdk.audio.AudioOutputConfig(filename=output_path)
         speech_synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=audio_config)
         
-        result = speech_synthesizer.speak_text_async(text).get()
-        if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
-            return output_path
-        else:
-            logger.error(f"Error synthesizing audio: {result.reason}")
+        try:
+            result = speech_synthesizer.speak_text_async(text).get()
+            if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
+                return output_path
+            else:
+                logger.error(f"Error synthesizing audio: {result.reason}")
+                return None
+        except Exception as e:
+            logger.error(f"Exception during speech synthesis: {str(e)}")
             return None
 
     def process_and_upload_dataset(self, dataset, dataset_name):
@@ -125,7 +130,7 @@ class WhisperFineTuning(Tasks):
         except Exception as e:
             logger.error(f"Error uploading dataset to hub: {str(e)}")
             raise
-
+        shutil.rmtree(temp_dir)
         return processed_dataset
 
     def load_dataset(self, dataset_name):
@@ -141,12 +146,12 @@ class WhisperFineTuning(Tasks):
         if "audio" not in train_dataset.column_names:
             audio_column = train_dataset.column_names[0]
             train_dataset = train_dataset.rename_column(audio_column, "audio")
-            logger.info(f"Renamed column to 'audio'")
+            logger.info("Renamed column to 'audio'")
 
         if "sentence" not in train_dataset.column_names:
             sentence_column = train_dataset.column_names[1]
             train_dataset = train_dataset.rename_column(sentence_column, "sentence")
-            logger.info(f"Renamed column to 'sentence'")
+            logger.info("Renamed column to 'sentence'")
         
         train_dataset = train_dataset.cast_column("audio", Audio(sampling_rate=16000))
         logger.info("Cast 'audio' column to Audio type")
